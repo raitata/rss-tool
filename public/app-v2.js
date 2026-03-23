@@ -420,6 +420,12 @@ async function fetchFullArticle(article) {
 
     // Clean up small/tracking images
     cleanArticleImages(contentEl);
+    
+    // Process video embeds (YouTube, Vimeo, etc.)
+    processVideoEmbeds(contentEl);
+    
+    // Process audio players
+    processAudioPlayers(contentEl);
 
     // Hide load button
     if (loadBtn) loadBtn.style.display = 'none';
@@ -465,6 +471,151 @@ function cleanArticleImages(container) {
       }
     }
   });
+}
+
+// ── Video & Audio Processing ───────────────────────────────────────────────────
+function processVideoEmbeds(container) {
+  if (!container) return;
+  
+  // Process existing iframes (YouTube, Vimeo, etc.)
+  container.querySelectorAll('iframe').forEach(iframe => {
+    const src = iframe.getAttribute('src') || '';
+    
+    // Check if it's a video embed
+    if (src.includes('youtube.com/embed/') || 
+        src.includes('youtu.be/') ||
+        src.includes('vimeo.com/video/') ||
+        src.includes('player.vimeo.com/') ||
+        src.includes('dailymotion.com/embed/') ||
+        src.includes('twitch.tv/embed/') ||
+        src.includes('kick.com/') ||
+        src.includes('odysee.com/$/embed/')) {
+      
+      // Wrap in video-embed container if not already wrapped
+      if (!iframe.parentElement.classList.contains('video-embed')) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'video-embed';
+        iframe.parentNode.insertBefore(wrapper, iframe);
+        wrapper.appendChild(iframe);
+      }
+    }
+  });
+  
+  // Convert YouTube links to embeds
+  container.querySelectorAll('a[href*="youtube.com/watch"], a[href*="youtu.be/"]').forEach(link => {
+    const videoId = extractYouTubeId(link.href);
+    if (videoId && !link.classList.contains('video-converted')) {
+      link.classList.add('video-converted');
+      const wrapper = document.createElement('div');
+      wrapper.className = 'video-embed';
+      wrapper.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+      link.parentNode.insertBefore(wrapper, link.nextSibling);
+    }
+  });
+  
+  // Convert native video elements
+  container.querySelectorAll('video').forEach(video => {
+    video.setAttribute('controls', '');
+    video.setAttribute('preload', 'metadata');
+    video.style.maxWidth = '100%';
+    
+    // Add poster if first frame is available
+    if (!video.poster && video.querySelector('source')) {
+      video.poster = '';
+    }
+  });
+}
+
+function processAudioPlayers(container) {
+  if (!container) return;
+  
+  // Process existing audio elements
+  container.querySelectorAll('audio').forEach(audio => {
+    audio.setAttribute('controls', '');
+    audio.style.width = '100%';
+    
+    // Wrap in audio-embed container if not already wrapped
+    if (!audio.parentElement.classList.contains('audio-embed')) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'audio-embed';
+      
+      // Try to extract title from nearby text or data attribute
+      const title = audio.getAttribute('data-title') || 
+                    audio.closest('figure, .audio-wrapper')?.querySelector('figcaption, .audio-title')?.textContent ||
+                    'Audio';
+      
+      wrapper.innerHTML = `
+        <div class="audio-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+          </svg>
+          ${esc(title)}
+        </div>
+      `;
+      audio.parentNode.insertBefore(wrapper, audio);
+      wrapper.appendChild(audio);
+    }
+  });
+  
+  // Convert podcast/audio file links to players
+  container.querySelectorAll('a[href$=".mp3"], a[href$=".mp4"], a[href$=".m4a"], a[href$=".ogg"], a[href$=".oga"], a[href$=".wav"], a[href$=".webm"]').forEach(link => {
+    if (link.classList.contains('audio-converted')) return;
+    link.classList.add('audio-converted');
+    
+    const url = link.href;
+    const title = link.textContent || 'Audio';
+    
+    // Check if it's a video file
+    if (url.match(/\.(mp4|webm|ogv)$/i)) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'video-embed';
+      wrapper.innerHTML = `<video controls preload="metadata" src="${esc(url)}"></video>`;
+      link.parentNode.insertBefore(wrapper, link.nextSibling);
+    } else {
+      // Audio file
+      const wrapper = document.createElement('div');
+      wrapper.className = 'audio-embed';
+      wrapper.innerHTML = `
+        <div class="audio-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+          </svg>
+          ${esc(title)}
+        </div>
+        <audio controls preload="metadata" src="${esc(url)}"></audio>
+      `;
+      link.parentNode.insertBefore(wrapper, link.nextSibling);
+    }
+  });
+  
+  // Convert podcast embed URLs (Spotify, Apple Podcasts, etc.)
+  container.querySelectorAll('a[href*="open.spotify.com/episode"], a[href*="open.spotify.com/show"]').forEach(link => {
+    if (link.classList.contains('spotify-converted')) return;
+    link.classList.add('spotify-converted');
+    
+    // Extract Spotify URI
+    const spotifyUrl = link.href.replace('open.spotify.com/', 'open.spotify.com/embed/');
+    
+    const wrapper = document.createElement('div');
+    wrapper.className = 'audio-embed';
+    wrapper.style.padding = '0';
+    wrapper.innerHTML = `<iframe src="${esc(spotifyUrl)}" width="100%" height="152" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>`;
+    link.parentNode.insertBefore(wrapper, link.nextSibling);
+  });
+}
+
+function extractYouTubeId(url) {
+  const patterns = [
+    /youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
 }
 
 function updateBadges() {

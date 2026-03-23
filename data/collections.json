@@ -2,7 +2,10 @@
   "80b08c13-279d-4f82-988c-74714cb61699": {
     "id": "80b08c13-279d-4f82-988c-74714cb61699",
     "name": "other",
-    "feedIds": [],
+    "feedIds": [
+      "835e9fcf-bc42-42e6-abdb-731b3d684245",
+      "db567df3-c1fc-4e4d-9fe9-c5582753e82f"
+    ],
     "color": "#a855f7",
     "createdAt": "2026-03-21T07:26:11.559Z"
   },
@@ -20,7 +23,8 @@
     "id": "57d2fde2-851c-428d-884c-5368c72908e3",
     "name": "Testing Folder",
     "feedIds": [
-      "ff371304-3dc8-4df0-9371-cbb74a793fd8"
+      "ff371304-3dc8-4df0-9371-cbb74a793fd8",
+      "b37fd0d4-be73-4e84-8582-e8a19c5b5c68"
     ],
     "color": "#4F8EF7",
     "createdAt": "2026-03-21T08:27:31.539Z"
@@ -28,9 +32,7 @@
   "62da8911-ca4b-4fd6-ad14-81c3331cea9d": {
     "id": "62da8911-ca4b-4fd6-ad14-81c3331cea9d",
     "name": "Social Feeds",
-    "feedIds": [
-      "835e9fcf-bc42-42e6-abdb-731b3d684245"
-    ],
+    "feedIds": [],
     "color": "#4F8EF7",
     "createdAt": "2026-03-21T08:53:03.243Z"
   }
