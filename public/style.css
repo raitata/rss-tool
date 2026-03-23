@@ -593,9 +593,31 @@ body {
 }
 
 .collection-item.drag-over,
-.feed-item.drag-over {
+.feed-item.drag-over,
+.feeds-section.drag-over,
+.nested-feed.drag-over {
   background: var(--accent-dim);
   border: 2px dashed var(--accent);
+}
+
+/* Nested feed drag styles */
+.nested-feed[draggable="true"] {
+  cursor: grab;
+}
+
+.nested-feed[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.nested-feed.dragging {
+  opacity: 0.5;
+  background: var(--accent-dim);
+}
+
+/* Feeds section drop target */
+.feeds-section {
+  transition: var(--transition);
+  border-radius: var(--radius);
 }
 
 /* Move Feed Modal */

@@ -808,5 +808,223 @@
         "image": null
       }
     ]
+  },
+  "b14b6443-855a-4737-b584-a0b32ac7d078": {
+    "id": "b14b6443-855a-4737-b584-a0b32ac7d078",
+    "url": "https://www.paulgraham.com/articles.html",
+    "type": "scraped",
+    "name": "Essays",
+    "description": "Auto-generated feed",
+    "siteUrl": "https://www.paulgraham.com/articles.html",
+    "favicon": "https://www.google.com/s2/favicons?domain=www.paulgraham.com&sz=64",
+    "siteImage": null,
+    "category": "Generated",
+    "addedAt": "2026-03-23T08:05:19.968Z",
+    "lastFetched": "2026-03-23T08:05:19.968Z",
+    "unreadCount": 20,
+    "items": [
+      {
+        "id": "https://www.paulgraham.com/selfindulgence.html",
+        "title": "How to Lose Time and Money",
+        "link": "https://www.paulgraham.com/selfindulgence.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/field.html",
+        "title": "The Shape of the Essay Field",
+        "link": "https://www.paulgraham.com/field.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/woke.html",
+        "title": "The Origins of Wokeness",
+        "link": "https://www.paulgraham.com/woke.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/writes.html",
+        "title": "Writes and Write-Nots",
+        "link": "https://www.paulgraham.com/writes.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/when.html",
+        "title": "When To Do What You Love",
+        "link": "https://www.paulgraham.com/when.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/persistence.html",
+        "title": "The Right Kind of Stubborn",
+        "link": "https://www.paulgraham.com/persistence.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/google.html",
+        "title": "How to Start Google",
+        "link": "https://www.paulgraham.com/google.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/superlinear.html",
+        "title": "Superlinear Returns",
+        "link": "https://www.paulgraham.com/superlinear.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/getideas.html",
+        "title": "How to Get New Ideas",
+        "link": "https://www.paulgraham.com/getideas.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/read.html",
+        "title": "The Need to Read",
+        "link": "https://www.paulgraham.com/read.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/want.html",
+        "title": "What You (Want to)* Want",
+        "link": "https://www.paulgraham.com/want.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/users.html",
+        "title": "What I've Learned from Users",
+        "link": "https://www.paulgraham.com/users.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/words.html",
+        "title": "Putting Ideas into Words",
+        "link": "https://www.paulgraham.com/words.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/goodtaste.html",
+        "title": "Is There Such a Thing as Good Taste?",
+        "link": "https://www.paulgraham.com/goodtaste.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/weird.html",
+        "title": "Weird Languages",
+        "link": "https://www.paulgraham.com/weird.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/hwh.html",
+        "title": "How to Work Hard",
+        "link": "https://www.paulgraham.com/hwh.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/own.html",
+        "title": "A Project of One's Own",
+        "link": "https://www.paulgraham.com/own.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/newideas.html",
+        "title": "Crazy New Ideas",
+        "link": "https://www.paulgraham.com/newideas.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/nft.html",
+        "title": "An NFT That Saves Lives",
+        "link": "https://www.paulgraham.com/nft.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.427Z"
+      },
+      {
+        "id": "https://www.paulgraham.com/greatwork.html",
+        "title": "How to Do Great Work",
+        "link": "https://www.paulgraham.com/greatwork.html",
+        "image": null,
+        "content": "",
+        "fullContent": "",
+        "author": "",
+        "date": "2026-03-23T08:05:12.426Z"
+      }
+    ],
+    "isScraped": true,
+    "autoRefreshMinutes": 60
   }
 }

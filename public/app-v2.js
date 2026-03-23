@@ -363,6 +363,14 @@ function selectArticle(article) {
   });
 
   $('loadFullArticle')?.addEventListener('click', () => fetchFullArticle(article));
+  
+  // Process any video/audio in the initial content
+  const contentEl = $('articleContent');
+  if (contentEl) {
+    cleanArticleImages(contentEl);
+    processVideoEmbeds(contentEl);
+    processAudioPlayers(contentEl);
+  }
 }
 
 async function fetchFullArticle(article) {
@@ -1294,7 +1302,7 @@ function bindSidebarEvents() {
     });
   });
 
-  // Nested feed clicks
+  // Nested feed clicks and drag
   $$('.nested-feed').forEach(el => {
     el.addEventListener('click', e => {
       if (e.target.closest('.feed-checkbox')) return;
@@ -1307,6 +1315,20 @@ function bindSidebarEvents() {
       }
     });
     
+    // Drag events for nested feeds
+    if (!state.bulkMode) {
+      el.addEventListener('dragstart', e => {
+        state.draggedFeedId = el.dataset.feedid;
+        el.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      
+      el.addEventListener('dragend', () => {
+        el.classList.remove('dragging');
+        state.draggedFeedId = null;
+      });
+    }
+    
     const checkbox = el.querySelector('.feed-checkbox');
     if (checkbox) {
       checkbox.addEventListener('change', () => {
@@ -1315,7 +1337,7 @@ function bindSidebarEvents() {
     }
   });
 
-  // Collection drag-drop targets
+  // Collection drag-drop targets (for moving between collections and from collection to another)
   $$('.collection-item[data-colid]').forEach(el => {
     el.addEventListener('dragover', e => {
       if (!state.draggedFeedId) return;
@@ -1337,6 +1359,13 @@ function bindSidebarEvents() {
       const targetColId = el.dataset.colid;
       const feedId = state.draggedFeedId;
       
+      // Check if feed is already in target collection
+      const targetCol = state.collections.find(c => c.id === targetColId);
+      if (targetCol && (targetCol.feedIds || []).includes(feedId)) {
+        toast('Feed already in this collection', 'warning');
+        return;
+      }
+      
       try {
         // Remove from current collection
         const currentCol = state.collections.find(c => (c.feedIds || []).includes(feedId));
@@ -1350,7 +1379,6 @@ function bindSidebarEvents() {
         }
         
         // Add to target collection
-        const targetCol = state.collections.find(c => c.id === targetColId);
         if (targetCol) {
           const updatedIds = [...(targetCol.feedIds || []), feedId];
           await fetch(`${API}/api/collections/${targetColId}`, {
@@ -1368,6 +1396,56 @@ function bindSidebarEvents() {
       }
     });
   });
+
+  // Drop target for feeds list (move back to unassigned)
+  const feedsList = $('feedsList');
+  const feedsSection = $('feedsSection');
+  const dropTarget = feedsSection || feedsList;
+  
+  if (dropTarget) {
+    dropTarget.addEventListener('dragover', e => {
+      if (!state.draggedFeedId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      dropTarget.classList.add('drag-over');
+    });
+    
+    dropTarget.addEventListener('dragleave', () => {
+      dropTarget.classList.remove('drag-over');
+    });
+    
+    dropTarget.addEventListener('drop', async e => {
+      if (!state.draggedFeedId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dropTarget.classList.remove('drag-over');
+      
+      const feedId = state.draggedFeedId;
+      
+      // Check if feed is currently in any collection
+      const currentCol = state.collections.find(c => (c.feedIds || []).includes(feedId));
+      if (!currentCol) {
+        toast('Feed is already unassigned', 'info');
+        return;
+      }
+      
+      try {
+        // Remove from current collection
+        const updatedIds = currentCol.feedIds.filter(id => id !== feedId);
+        await fetch(`${API}/api/collections/${currentCol.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feedIds: updatedIds })
+        });
+        
+        await loadCollections();
+        renderSidebar();
+        toast('Feed moved to unassigned', 'success');
+      } catch {
+        toast('Move failed', 'error');
+      }
+    });
+  }
 
   // Collection delete
   $$('.delete-btn[data-colid]').forEach(btn => {
