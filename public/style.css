@@ -463,7 +463,173 @@ body {
   flex-shrink: 0;
 }
 
-/* Legacy button styles */
+/* Feed Selection Checkbox */
+.feed-checkbox-wrapper {
+  display: none;
+  align-items: center;
+  margin-right: 4px;
+}
+
+.bulk-mode .feed-checkbox-wrapper {
+  display: flex;
+}
+
+.bulk-mode .feed-favicon {
+  display: none;
+}
+
+.feed-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.feed-item.selected, .collection-item.selected {
+  background: var(--accent-dim);
+}
+
+/* Bulk Actions Bar */
+.bulk-actions-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  z-index: 1000;
+}
+
+.bulk-actions-bar.visible {
+  display: flex;
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+.bulk-actions-bar span {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.bulk-actions-bar button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.bulk-actions-bar button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.bulk-actions-bar .btn-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.bulk-actions-bar .btn-danger:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.bulk-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  margin-left: auto;
+}
+
+.bulk-toggle:hover, .bulk-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.bulk-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Drag and Drop */
+.feed-item[draggable="true"] {
+  cursor: grab;
+}
+
+.feed-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.feed-item.dragging {
+  opacity: 0.5;
+  background: var(--accent-dim);
+}
+
+.collection-item.drag-over,
+.feed-item.drag-over {
+  background: var(--accent-dim);
+  border: 2px dashed var(--accent);
+}
+
+/* Move Feed Modal */
+.move-feed-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: var(--transition);
+  margin-bottom: 8px;
+}
+
+.move-feed-option:hover {
+  background: var(--bg-hover);
+}
+
+.move-feed-option.selected {
+  border: 2px solid var(--accent);
+  background: var(--accent-dim);
+}
+
+.move-feed-option svg {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+}
+
+.move-feed-option span {
+  font-size: 13px;
+  color: var(--text-primary);
+}
 .btn-add {
   width: 22px;
   height: 22px;
@@ -484,6 +650,62 @@ body {
   background: var(--accent);
   border-color: var(--accent);
   color: #000;
+}
+
+/* Fullscreen Reading Mode */
+.article-view.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3000;
+  background: var(--bg-primary);
+}
+
+.article-view.fullscreen .article-body {
+  max-width: 800px;
+  padding: 40px 48px 80px;
+}
+
+.article-view.fullscreen .article-header {
+  padding: 16px 48px;
+}
+
+/* Refresh All Button */
+.btn-refresh-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-refresh-all:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-refresh-all.spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+/* Duplicate Image Prevention */
+.article-text img.hero-detected,
+.reading-article-body img.hero-detected {
+  display: none;
+}
+
+.article-text img:first-child,
+.reading-article-body img:first-child {
+  margin-top: 0;
 }
 
 /* Export Dropdown */

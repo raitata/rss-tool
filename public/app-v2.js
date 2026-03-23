@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════════════
    RSS Tool — Modern UI (Adapted from RSS-Bridge)
-   Three-panel layout with URL Scraper integration
+   Features: Bulk selection, drag-drop, fullscreen reading, Mozilla Readability
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 const API = '';  // same origin
@@ -18,7 +18,7 @@ const state = {
   search: '',
   filter: 'all',
   sort: 'date',
-  layout: 'list',  // Default to list for three-panel layout
+  layout: 'list',
   starred: new Set(JSON.parse(localStorage.getItem('starred') || '[]')),
   offset: 0,
   PAGE_SIZE: 40,
@@ -28,6 +28,9 @@ const state = {
   confirmAction: null,
   renameColId: null,
   expandedCollections: {},
+  bulkMode: false,
+  selectedFeeds: new Set(),
+  draggedFeedId: null,
   settings: JSON.parse(localStorage.getItem('rssToolSettings')) || {
     rssHubUrl: 'https://rsshub.app',
     theme: 'dark',
@@ -36,11 +39,9 @@ const state = {
   }
 };
 
-// Expose state and API to window for global access
 window.state = state;
 window.API = API;
 
-// ── DOM refs ─────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
@@ -100,12 +101,10 @@ async function loadArticles() {
 function applyFilters() {
   let articles = [...state.articles];
 
-  // View-specific
   if (state.currentView === 'starred') {
     articles = articles.filter(a => state.starred.has(a.id || a.link));
   }
 
-  // Search
   if (state.search) {
     const q = state.search.toLowerCase();
     articles = articles.filter(a =>
@@ -115,7 +114,6 @@ function applyFilters() {
     );
   }
 
-  // Sort
   if (state.sort === 'date') articles.sort((a, b) => new Date(b.date) - new Date(a.date));
   else if (state.sort === 'date-asc') articles.sort((a, b) => new Date(a.date) - new Date(b.date));
   else if (state.sort === 'feed') articles.sort((a, b) => (a.feedName || '').localeCompare(b.feedName || ''));
@@ -136,22 +134,26 @@ function renderSidebar() {
     return;
   }
 
-  // Find unassigned feeds
   const unassignedFeeds = state.feeds.filter(f => !state.collections.some(c => (c.feedIds || []).includes(f.id)));
 
-  // Generate Collections HTML
+  // Collections with checkboxes in bulk mode
   if (collectionsList) {
     const collectionsHtml = state.collections.map(c => {
       const colFeeds = state.feeds.filter(f => (c.feedIds || []).includes(f.id));
       const isColActive = state.currentView === 'collection:' + c.id;
       const isExpanded = state.expandedCollections[c.id] || isColActive;
 
-      const feedsHtml = colFeeds.map(f => `
-        <div class="nested-feed ${state.currentView === 'feed:' + f.id ? 'active' : ''}" data-feedid="${f.id}">
+      const feedsHtml = colFeeds.map(f => {
+        const isSelected = state.selectedFeeds.has(f.id);
+        return `
+        <div class="nested-feed ${state.currentView === 'feed:' + f.id ? 'active' : ''} ${isSelected ? 'selected' : ''}" 
+             data-feedid="${f.id}"
+             ${state.bulkMode ? '' : 'draggable="true"'}>
+          ${state.bulkMode ? `<input type="checkbox" class="feed-checkbox" data-feedid="${f.id}" ${isSelected ? 'checked' : ''}>` : ''}
           <img class="feed-favicon" src="${f.favicon || 'default.ico'}" alt="" onerror="this.style.display='none'">
           <span>${esc(f.name)}</span>
         </div>
-      `).join('');
+      `}).join('');
 
       return `
         <div class="folder-group" data-colid="${c.id}">
@@ -183,10 +185,17 @@ function renderSidebar() {
     collectionsList.innerHTML = collectionsHtml || '<div class="empty-hint">No collections yet</div>';
   }
 
-  // Generate Unassigned Feeds HTML
+  // Unassigned Feeds with checkboxes in bulk mode
   if (feedsList) {
-    const unassignedHtml = unassignedFeeds.map(f => `
-      <div class="feed-item ${state.currentView === 'feed:' + f.id ? 'active' : ''}" data-feedid="${f.id}">
+    const unassignedHtml = unassignedFeeds.map(f => {
+      const isSelected = state.selectedFeeds.has(f.id);
+      return `
+      <div class="feed-item ${state.currentView === 'feed:' + f.id ? 'active' : ''} ${isSelected ? 'selected' : ''}" 
+           data-feedid="${f.id}"
+           ${state.bulkMode ? '' : 'draggable="true"'}>
+        <div class="feed-checkbox-wrapper">
+          <input type="checkbox" class="feed-checkbox" data-feedid="${f.id}" ${isSelected ? 'checked' : ''}>
+        </div>
         <img class="feed-favicon" src="${f.favicon || 'default.ico'}" alt="" onerror="this.style.display='none'">
         <span class="feed-name">${esc(f.name)}</span>
         <span class="feed-count">${f.unreadCount || 0}</span>
@@ -203,7 +212,7 @@ function renderSidebar() {
           </button>
         </div>
       </div>
-    `).join('');
+    `}).join('');
     feedsList.innerHTML = unassignedHtml || '<div class="empty-hint">No unassigned feeds</div>';
   }
 
@@ -214,9 +223,7 @@ function renderArticleList(reset = false) {
   const articlesList = $('articlesList');
   if (!articlesList) return;
 
-  if (reset) {
-    state.offset = 0;
-  }
+  if (reset) state.offset = 0;
 
   const page = state.filteredArticles.slice(state.offset, state.offset + state.PAGE_SIZE);
 
@@ -236,15 +243,11 @@ function renderArticleList(reset = false) {
   }
 
   const html = page.map((a, idx) => articleListItem(a, state.offset + idx)).join('');
-  if (reset) {
-    articlesList.innerHTML = html;
-  } else {
-    articlesList.insertAdjacentHTML('beforeend', html);
-  }
+  if (reset) articlesList.innerHTML = html;
+  else articlesList.insertAdjacentHTML('beforeend', html);
 
   state.offset += page.length;
 
-  // Bind article clicks
   articlesList.querySelectorAll('.article-item').forEach(item => {
     item.addEventListener('click', () => {
       const idx = parseInt(item.dataset.idx);
@@ -279,13 +282,11 @@ function selectArticle(article) {
   if (!article) return;
   state.selectedArticle = article;
   
-  // Update active state in list
   $$('.article-item').forEach(el => el.classList.remove('active'));
   const artId = article.id || article.link || '';
   const activeEl = document.querySelector(`.article-item[data-artid="${CSS.escape(artId)}"]`);
   if (activeEl) activeEl.classList.add('active');
 
-  // Render article view
   const articleView = $('articleView');
   const id = article.id || article.link || '';
   const isStarred = state.starred.has(id);
@@ -305,6 +306,11 @@ function selectArticle(article) {
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
           </svg>
         </button>
+        <button id="fullscreenBtn" title="Fullscreen reading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+          </svg>
+        </button>
         <a href="${esc(article.link || '#')}" target="_blank" rel="noopener" title="Open in browser">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
@@ -320,7 +326,12 @@ function selectArticle(article) {
         ${article.author ? `<span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>${esc(article.author)}</span>` : ''}
         ${dateStr ? `<span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${dateStr}</span>` : ''}
       </div>
-      <button class="load-full-btn" id="loadFullArticle">Load Full Article</button>
+      <button class="load-full-btn" id="loadFullArticle">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/>
+        </svg>
+        Load Full Article (Mozilla Readability)
+      </button>
       <div class="article-text" id="articleContent">
         ${article.content || article.summary || '<p>No content available.</p>'}
       </div>
@@ -344,7 +355,11 @@ function selectArticle(article) {
 
   $('starArticleBtn').addEventListener('click', () => {
     toggleStar(id);
-    selectArticle(article); // Re-render to update star state
+    selectArticle(article);
+  });
+
+  $('fullscreenBtn').addEventListener('click', () => {
+    articleView.classList.toggle('fullscreen');
   });
 
   $('loadFullArticle')?.addEventListener('click', () => fetchFullArticle(article));
@@ -356,23 +371,42 @@ async function fetchFullArticle(article) {
 
   const loadBtn = $('loadFullArticle');
   if (loadBtn) {
-    loadBtn.innerHTML = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Loading...`;
+    loadBtn.innerHTML = `<svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Loading with Mozilla Readability...`;
     loadBtn.disabled = true;
   }
 
   try {
-    const res = await fetch(`${API}/api/article-content?url=${encodeURIComponent(article.link)}`);
+    const res = await fetch(`${API}/api/article-content?url=${encodeURIComponent(article.link)}&readability=true`);
     const data = await res.json();
 
     if (!res.ok) throw new Error(data.error);
 
-    // Update content
+    // Store hero image URL for duplicate detection
+    const heroImage = article.image || data.heroImage;
+
+    // Clean content first
     contentEl.innerHTML = data.content || '<p>Could not extract article content.</p>';
 
-    // Clean up images
-    cleanArticleImages(contentEl);
+    // Mozilla Readability: Remove duplicate hero image from content
+    if (heroImage) {
+      const cleanHeroUrl = heroImage.split('?')[0].replace(/^https?:\/\//, '');
+      contentEl.querySelectorAll('img').forEach(img => {
+        const imgSrc = (img.src || '').split('?')[0].replace(/^https?:\/\//, '');
+        // Check if this image matches the hero image
+        if (imgSrc === cleanHeroUrl || 
+            imgSrc.includes(cleanHeroUrl) || 
+            cleanHeroUrl.includes(imgSrc) ||
+            (cleanHeroUrl.length > 20 && imgSrc.includes(cleanHeroUrl.slice(-20)))) {
+          // Also check dimensions - hero images are usually larger
+          if (img.naturalWidth > 200 || img.width > 200 || !img.complete) {
+            img.classList.add('hero-detected');
+            img.style.display = 'none';
+          }
+        }
+      });
+    }
 
-    // Remove duplicate title and hero image
+    // Remove duplicate title headings
     const cleanStr = (s) => (s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     const targetTitle = cleanStr(article.title);
     if (targetTitle.length > 5) {
@@ -384,13 +418,16 @@ async function fetchFullArticle(article) {
       });
     }
 
-    // Remove load button since we loaded the content
+    // Clean up small/tracking images
+    cleanArticleImages(contentEl);
+
+    // Hide load button
     if (loadBtn) loadBtn.style.display = 'none';
 
   } catch (err) {
     contentEl.innerHTML = `<p class="article-fetch-error">Could not load article content. <a href="${esc(article.link)}" target="_blank">Open in browser →</a></p>`;
     if (loadBtn) {
-      loadBtn.innerHTML = 'Load Full Article';
+      loadBtn.innerHTML = 'Load Full Article (Mozilla Readability)';
       loadBtn.disabled = false;
     }
   }
@@ -400,7 +437,7 @@ function cleanArticleImages(container) {
   if (!container) return;
   container.querySelectorAll('img').forEach(img => {
     const src = img.getAttribute('src') || '';
-    if (!src || src === '' || src.startsWith('data:image/gif') || src.includes('pixel') || src.includes('beacon')) {
+    if (!src || src === '' || src.startsWith('data:image/gif') || src.includes('pixel') || src.includes('beacon') || src.includes('tracker')) {
       img.remove();
       return;
     }
@@ -432,9 +469,6 @@ function cleanArticleImages(container) {
 
 function updateBadges() {
   const allCount = state.filteredArticles.length;
-  const starCount = state.articles.filter(a => state.starred.has(a.id || a.link)).length;
-  
-  // Update feed counts in sidebar
   state.feeds.forEach(f => {
     const feedItems = state.articles.filter(a => (a.feedId || a.feed_id) === f.id);
     f.unreadCount = feedItems.length;
@@ -459,6 +493,143 @@ function setView(view, title) {
   }
   
   loadArticles();
+}
+
+// ── Bulk Selection ────────────────────────────────────────────────────────────
+function toggleBulkMode() {
+  state.bulkMode = !state.bulkMode;
+  state.selectedFeeds.clear();
+  updateBulkUI();
+  renderSidebar();
+}
+
+function updateBulkUI() {
+  const btn = $('btnBulkToggle');
+  const bar = $('bulkActionsBar');
+  const sidebar = $('sidebar');
+  
+  if (btn) btn.classList.toggle('active', state.bulkMode);
+  if (sidebar) sidebar.classList.toggle('bulk-mode', state.bulkMode);
+  
+  if (state.bulkMode && state.selectedFeeds.size > 0) {
+    bar.classList.add('visible');
+    $('bulkCount').textContent = `${state.selectedFeeds.size} selected`;
+  } else {
+    bar.classList.remove('visible');
+  }
+}
+
+function toggleFeedSelection(feedId) {
+  if (state.selectedFeeds.has(feedId)) {
+    state.selectedFeeds.delete(feedId);
+  } else {
+    state.selectedFeeds.add(feedId);
+  }
+  updateBulkUI();
+  renderSidebar();
+}
+
+async function bulkDelete() {
+  if (state.selectedFeeds.size === 0) return;
+  
+  if (!confirm(`Delete ${state.selectedFeeds.size} selected feeds?`)) return;
+  
+  let deleted = 0;
+  for (const feedId of state.selectedFeeds) {
+    try {
+      await fetch(`${API}/api/feeds/${encodeURIComponent(feedId)}`, { method: 'DELETE' });
+      deleted++;
+    } catch {}
+  }
+  
+  state.selectedFeeds.clear();
+  toggleBulkMode();
+  await loadFeeds();
+  renderSidebar();
+  await loadArticles();
+  toast(`Deleted ${deleted} feeds`, 'success');
+}
+
+async function bulkMove() {
+  if (state.selectedFeeds.size === 0) return;
+  
+  // Populate move options
+  const optionsEl = $('moveFeedOptions');
+  optionsEl.innerHTML = `
+    <div class="move-feed-option" data-target="">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 2H8a2 2 0 00-2 2v3h12V4a2 2 0 00-2-2z"/>
+      </svg>
+      <span>Unassigned (no collection)</span>
+    </div>
+    ${state.collections.map(c => `
+      <div class="move-feed-option" data-target="${c.id}">
+        <svg viewBox="0 0 24 24" fill="${c.color || '#22c55e'}" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span>${esc(c.name)}</span>
+      </div>
+    `).join('')}
+  `;
+  
+  // Bind selection
+  let selectedTarget = null;
+  optionsEl.querySelectorAll('.move-feed-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      optionsEl.querySelectorAll('.move-feed-option').forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      selectedTarget = opt.dataset.target;
+    });
+  });
+  
+  // Bind confirm
+  const confirmBtn = $('btnMoveFeedConfirm');
+  confirmBtn.onclick = async () => {
+    if (selectedTarget === null) {
+      toast('Please select a destination', 'error');
+      return;
+    }
+    
+    let moved = 0;
+    for (const feedId of state.selectedFeeds) {
+      try {
+        // Remove from current collection if any
+        const currentCol = state.collections.find(c => (c.feedIds || []).includes(feedId));
+        if (currentCol) {
+          const updatedIds = currentCol.feedIds.filter(id => id !== feedId);
+          await fetch(`${API}/api/collections/${currentCol.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ feedIds: updatedIds })
+          });
+        }
+        
+        // Add to new collection if selected
+        if (selectedTarget) {
+          const targetCol = state.collections.find(c => c.id === selectedTarget);
+          if (targetCol) {
+            const updatedIds = [...(targetCol.feedIds || []), feedId];
+            await fetch(`${API}/api/collections/${selectedTarget}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ feedIds: updatedIds })
+            });
+          }
+        }
+        moved++;
+      } catch {}
+    }
+    
+    closeModal('modalMoveFeed');
+    state.selectedFeeds.clear();
+    toggleBulkMode();
+    await loadCollections();
+    await loadFeeds();
+    renderSidebar();
+    toast(`Moved ${moved} feeds`, 'success');
+  };
+  
+  openModal('modalMoveFeed');
 }
 
 // ── URL Scraper ───────────────────────────────────────────────────────────────
@@ -490,7 +661,6 @@ async function handleScrape(e) {
 
     state.scraperResult = data;
 
-    // Render result
     let resultHtml = `
       <div class="result-header">
         <img src="${data.favicon || `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=64`}" alt="" class="result-favicon">
@@ -527,7 +697,6 @@ async function handleScrape(e) {
     resultEl.innerHTML = resultHtml;
     resultEl.style.display = 'block';
 
-    // Bind save button
     const saveBtn = $('btnSaveScrapedFeed');
     if (saveBtn) {
       saveBtn.addEventListener('click', () => saveScrapedFeed(data));
@@ -573,13 +742,10 @@ async function saveScrapedFeed(data) {
     if (!res.ok) throw new Error((await res.json()).error || 'Failed to save feed');
 
     toast('Feed saved successfully!', 'success');
-    
-    // Reset scraper
     $('scraperUrlInput').value = '';
     $('scraperResult').style.display = 'none';
     $('scraperError').style.display = 'none';
     
-    // Reload data
     await loadFeeds();
     renderSidebar();
     await loadArticles();
@@ -593,14 +759,12 @@ async function saveScrapedFeed(data) {
 
 // ── Event Binding ────────────────────────────────────────────────────────────
 function bindEvents() {
-  // Navigation
   const navAll = $('nav-all');
   if (navAll) navAll.addEventListener('click', e => { e.preventDefault(); setView('all', 'All Articles'); });
   
   const navStarred = $('nav-starred');
   if (navStarred) navStarred.addEventListener('click', e => { e.preventDefault(); setView('starred', 'Starred'); });
 
-  // Add Feed Form Toggle
   const btnAddFeedToggle = $('btnAddFeedToggle');
   if (btnAddFeedToggle) {
     btnAddFeedToggle.addEventListener('click', () => {
@@ -609,7 +773,6 @@ function bindEvents() {
     });
   }
 
-  // Cancel Add Feed
   const btnCancelAddFeed = $('btnCancelAddFeed');
   if (btnCancelAddFeed) {
     btnCancelAddFeed.addEventListener('click', () => {
@@ -619,7 +782,6 @@ function bindEvents() {
     });
   }
 
-  // Add Feed Submit
   const addFeedForm = $('addFeedForm');
   if (addFeedForm) {
     addFeedForm.addEventListener('submit', async (e) => {
@@ -657,7 +819,6 @@ function bindEvents() {
     });
   }
 
-  // URL Scraper Toggle
   const btnToggleScraper = $('btnToggleScraper');
   if (btnToggleScraper) {
     btnToggleScraper.addEventListener('click', () => {
@@ -668,13 +829,11 @@ function bindEvents() {
     });
   }
 
-  // Scraper Form
   const scraperForm = $('scraperForm');
   if (scraperForm) {
     scraperForm.addEventListener('submit', handleScrape);
   }
 
-  // Search
   const searchInput = $('searchInput');
   if (searchInput) {
     searchInput.addEventListener('input', () => {
@@ -695,7 +854,6 @@ function bindEvents() {
     });
   }
 
-  // Settings
   const btnSettings = $('btnSettings');
   if (btnSettings) btnSettings.addEventListener('click', () => openModal('modalSettings'));
 
@@ -729,7 +887,6 @@ function bindEvents() {
     });
   }
 
-  // Modal Tabs
   $$('.modal-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       const modal = tab.closest('.modal');
@@ -741,7 +898,6 @@ function bindEvents() {
     });
   });
 
-  // Modal Close
   $$('.modal-close').forEach(btn => {
     btn.addEventListener('click', () => {
       const modalId = btn.dataset.modal;
@@ -755,7 +911,6 @@ function bindEvents() {
     });
   });
 
-  // Add Collection
   const btnAddCollection = $('btnAddCollection');
   if (btnAddCollection) btnAddCollection.addEventListener('click', () => openModal('modalAddCollection'));
 
@@ -780,7 +935,6 @@ function bindEvents() {
     });
   }
 
-  // Color Picker
   $$('.color-swatch').forEach(sw => {
     sw.addEventListener('click', () => {
       $$('.color-swatch').forEach(s => s.classList.remove('active'));
@@ -789,7 +943,6 @@ function bindEvents() {
     });
   });
 
-  // Import OPML
   const btnImportOPML = $('btnImportOPML');
   if (btnImportOPML) btnImportOPML.addEventListener('click', () => openModal('modalImport'));
 
@@ -810,7 +963,6 @@ function bindEvents() {
     opmlFile.addEventListener('change', e => handleOPMLFile(e.target.files[0]));
   }
 
-  // Export dropdown
   const btnExport = $('btnExport');
   if (btnExport) {
     btnExport.addEventListener('click', () => {
@@ -826,7 +978,6 @@ function bindEvents() {
     }
   });
 
-  // Confirm Delete
   const btnConfirmDelete = $('btnConfirmDelete');
   if (btnConfirmDelete) {
     btnConfirmDelete.addEventListener('click', async () => {
@@ -856,24 +1007,119 @@ function bindEvents() {
       }
     });
   }
+
+  // Bulk actions
+  const btnBulkToggle = $('btnBulkToggle');
+  if (btnBulkToggle) btnBulkToggle.addEventListener('click', toggleBulkMode);
+  
+  const btnBulkMove = $('btnBulkMove');
+  if (btnBulkMove) btnBulkMove.addEventListener('click', bulkMove);
+  
+  const btnBulkDelete = $('btnBulkDelete');
+  if (btnBulkDelete) btnBulkDelete.addEventListener('click', bulkDelete);
+
+  // Refresh All
+  const btnRefreshAll = $('btnRefreshAll');
+  if (btnRefreshAll) {
+    btnRefreshAll.addEventListener('click', async () => {
+      btnRefreshAll.classList.add('spinning');
+      toast('Refreshing all feeds...', 'info');
+      
+      let success = 0, failed = 0;
+      const promises = state.feeds.map(async (f) => {
+        try {
+          const res = await fetch(`${API}/api/feeds/${encodeURIComponent(f.id)}/refresh`, { method: 'POST' });
+          if (res.ok) success++;
+          else failed++;
+        } catch {
+          failed++;
+        }
+      });
+      
+      await Promise.allSettled(promises);
+      
+      await loadFeeds();
+      renderSidebar();
+      await loadArticles();
+      
+      btnRefreshAll.classList.remove('spinning');
+      toast(`Refreshed ${success} feeds${failed > 0 ? `, ${failed} failed` : ''}`, failed > 0 ? 'warning' : 'success');
+    });
+  }
 }
 
 function bindSidebarEvents() {
-  // Feed items
+  // Feed item clicks (when not in bulk mode)
   $$('.feed-item[data-feedid]').forEach(el => {
-    el.addEventListener('click', e => {
-      if (e.target.closest('.feed-actions')) return;
-      const feedId = el.dataset.feedid;
-      const feed = state.feeds.find(f => f.id === feedId);
-      if (feed) {
-        $$('.feed-item, .collection-item, .nav-item').forEach(i => i.classList.remove('active'));
-        el.classList.add('active');
-        setView('feed:' + feedId, feed.name);
-      }
-    });
+    if (!state.bulkMode) {
+      el.addEventListener('click', e => {
+        if (e.target.closest('.feed-actions')) return;
+        const feedId = el.dataset.feedid;
+        const feed = state.feeds.find(f => f.id === feedId);
+        if (feed) {
+          $$('.feed-item, .collection-item, .nav-item').forEach(i => i.classList.remove('active'));
+          el.classList.add('active');
+          setView('feed:' + feedId, feed.name);
+        }
+      });
+    }
+    
+    // Drag events
+    if (!state.bulkMode) {
+      el.addEventListener('dragstart', e => {
+        state.draggedFeedId = el.dataset.feedid;
+        el.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      
+      el.addEventListener('dragend', () => {
+        el.classList.remove('dragging');
+        state.draggedFeedId = null;
+      });
+    }
+    
+    // Checkbox in bulk mode
+    const checkbox = el.querySelector('.feed-checkbox');
+    if (checkbox) {
+      checkbox.addEventListener('change', () => {
+        toggleFeedSelection(el.dataset.feedid);
+      });
+    }
+    
+    // Refresh/delete buttons
+    const refreshBtn = el.querySelector('.refresh-btn');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', async e => {
+        e.stopPropagation();
+        const feedId = el.dataset.feedid;
+        toast('Refreshing feed...', 'info');
+        try {
+          await fetch(`${API}/api/feeds/${encodeURIComponent(feedId)}/refresh`, { method: 'POST' });
+          await loadFeeds();
+          renderSidebar();
+          if (state.currentView === 'feed:' + feedId || state.currentView === 'all') {
+            await loadArticles();
+          }
+          toast('Feed refreshed!', 'success');
+        } catch {
+          toast('Refresh failed', 'error');
+        }
+      });
+    }
+    
+    const deleteBtn = el.querySelector('.delete-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        const feedId = el.dataset.feedid;
+        state.confirmAction = { type: 'feed', id: feedId };
+        $('confirmDeleteMessage').textContent = 'Are you sure you want to delete this feed?';
+        openModal('modalConfirmDelete');
+      });
+    }
   });
 
-  // Collection items
+  // Collection clicks
   $$('.collection-item[data-colid]').forEach(el => {
     el.addEventListener('click', e => {
       if (e.target.closest('.feed-actions') || e.target.closest('.expand-btn')) return;
@@ -899,7 +1145,8 @@ function bindSidebarEvents() {
 
   // Nested feed clicks
   $$('.nested-feed').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', e => {
+      if (e.target.closest('.feed-checkbox')) return;
       const feedId = el.dataset.feedid;
       const feed = state.feeds.find(f => f.id === feedId);
       if (feed) {
@@ -908,42 +1155,76 @@ function bindSidebarEvents() {
         setView('feed:' + feedId, feed.name);
       }
     });
+    
+    const checkbox = el.querySelector('.feed-checkbox');
+    if (checkbox) {
+      checkbox.addEventListener('change', () => {
+        toggleFeedSelection(el.dataset.feedid);
+      });
+    }
   });
 
-  // Refresh buttons
-  $$('.refresh-btn').forEach(btn => {
-    btn.addEventListener('click', async e => {
+  // Collection drag-drop targets
+  $$('.collection-item[data-colid]').forEach(el => {
+    el.addEventListener('dragover', e => {
+      if (!state.draggedFeedId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      el.classList.add('drag-over');
+    });
+    
+    el.addEventListener('dragleave', () => {
+      el.classList.remove('drag-over');
+    });
+    
+    el.addEventListener('drop', async e => {
+      if (!state.draggedFeedId) return;
+      e.preventDefault();
       e.stopPropagation();
-      const feedId = btn.dataset.feedid;
-      toast('Refreshing feed...', 'info');
+      el.classList.remove('drag-over');
+      
+      const targetColId = el.dataset.colid;
+      const feedId = state.draggedFeedId;
+      
       try {
-        await fetch(`${API}/api/feeds/${encodeURIComponent(feedId)}/refresh`, { method: 'POST' });
-        await loadFeeds();
-        renderSidebar();
-        if (state.currentView === 'feed:' + feedId || state.currentView === 'all') {
-          await loadArticles();
+        // Remove from current collection
+        const currentCol = state.collections.find(c => (c.feedIds || []).includes(feedId));
+        if (currentCol) {
+          const updatedIds = currentCol.feedIds.filter(id => id !== feedId);
+          await fetch(`${API}/api/collections/${currentCol.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ feedIds: updatedIds })
+          });
         }
-        toast('Feed refreshed!', 'success');
+        
+        // Add to target collection
+        const targetCol = state.collections.find(c => c.id === targetColId);
+        if (targetCol) {
+          const updatedIds = [...(targetCol.feedIds || []), feedId];
+          await fetch(`${API}/api/collections/${targetColId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ feedIds: updatedIds })
+          });
+        }
+        
+        await loadCollections();
+        renderSidebar();
+        toast('Feed moved', 'success');
       } catch {
-        toast('Refresh failed', 'error');
+        toast('Move failed', 'error');
       }
     });
   });
 
-  // Delete buttons
-  $$('.delete-btn').forEach(btn => {
+  // Collection delete
+  $$('.delete-btn[data-colid]').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      const feedId = btn.dataset.feedid;
       const colId = btn.dataset.colid;
-      
-      if (feedId) {
-        state.confirmAction = { type: 'feed', id: feedId };
-        $('confirmDeleteMessage').textContent = 'Are you sure you want to delete this feed?';
-      } else if (colId) {
-        state.confirmAction = { type: 'collection', id: colId };
-        $('confirmDeleteMessage').textContent = 'Are you sure you want to delete this collection?';
-      }
+      state.confirmAction = { type: 'collection', id: colId };
+      $('confirmDeleteMessage').textContent = 'Are you sure you want to delete this collection?';
       openModal('modalConfirmDelete');
     });
   });
@@ -1045,7 +1326,6 @@ function applySettings() {
   document.documentElement.setAttribute('data-font', state.settings.fontSize);
 }
 
-// System theme listener
 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
   if (state.settings.theme === 'system') applySettings();
 });
