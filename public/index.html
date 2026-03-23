@@ -7,380 +7,216 @@
   <meta name="description" content="A free, locally-hosted RSS aggregator. Add feeds, create collections, search and filter articles, export OPML/JSON/CSV." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- SIDEBAR -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <div class="logo">
-        <span class="logo-icon">⚡</span>
-        <span class="logo-text">RSS<span class="logo-accent">Tool</span></span>
-      </div>
-      <button class="btn-icon sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-      </button>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="section-label">VIEWS</div>
-      <nav class="nav-list">
-        <a class="nav-item active" data-view="all" id="nav-all" href="#">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 2H8a2 2 0 00-2 2v3h12V4a2 2 0 00-2-2z"/></svg>
-          All Articles
-          <span class="badge" id="badge-all">0</span>
-        </a>
-        <a class="nav-item" data-view="starred" href="#">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-          Starred
-          <span class="badge" id="badge-starred">0</span>
-        </a>
-      </nav>
-    </div>
-
-    <div class="sidebar-section" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; min-height:0;">
-      <div class="section-header">
-        <div class="section-label">FEEDS & FOLDERS</div>
-        <div style="display:flex; gap:4px;">
-          <button class="btn-add" id="btnAddCollection" title="New Folder">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          </button>
-          <button class="btn-add" id="btnAddFeed" title="Add Feed">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L2 12l10 6.26M22 12l-3.09-6.26z"/></svg>
-          </button>
-          <button class="btn-add btn-toggle" id="toggleBulkBtn" title="Toggle bulk selection">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 1-2v2a2 2 0 0 1 2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2-2H9a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          </button>
-          <div class="bulk-selection-controls" id="bulkControls" style="display:none;">
-            <div class="bulk-selection-info">
-              <span id="selectedCount">0</span> feeds selected
-            </div>
-            <div class="bulk-actions">
-              <button class="btn-bulk" id="selectAllBtn" title="Select all feeds">Select All</button>
-              <button class="btn-bulk" id="deselectAllBtn" title="Deselect all feeds">Deselect All</button>
-              <button class="btn-bulk" id="bulkMoveBtn" title="Move selected feeds">Move Selected</button>
-              <button class="btn-bulk" id="bulkDeleteBtn" title="Delete selected feeds">Delete Selected</button>
-            </div>
+  <div class="app">
+    <!-- ─── SIDEBAR ───────────────────────────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M4 11a9 9 0 0 1 9 9"/>
+              <path d="M4 4a16 16 0 0 1 16 16"/>
+              <circle cx="5" cy="19" r="1"/>
+            </svg>
           </div>
+          <span>RSS Bridge</span>
         </div>
       </div>
-      <div class="feeds-list" id="feedsList" style="flex:1; overflow-y:auto;">
-        <div class="empty-hint">No feeds yet.<br/>Click + to add one.</div>
-      </div>
-    </div>
 
-    <div class="sidebar-footer">
-      <button class="sidebar-action" id="btnSettings" title="Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-        Settings
-      </button>
-      <button class="sidebar-action" id="btnImportOPML">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10m0 0l-3-3m3 3l3-3"/><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-        Import OPML
-      </button>
-      <div class="export-dropdown">
-        <button class="sidebar-action" id="btnExport">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22v-10m0 0l-3 3m3-3l3 3"/><path d="M4 8V6a2 2 0 012-2h12a2 2 0 012 2v2"/></svg>
-          Export
-        </button>
-        <div class="export-menu" id="exportMenu">
-          <a href="/api/export/opml" download>Export OPML</a>
-          <a href="/api/export/json" download>Export JSON</a>
-          <a href="/api/export/csv" download>Export CSV</a>
+      <!-- Navigation -->
+      <div class="sidebar-section">
+        <div class="section-header">
+          <span>Views</span>
         </div>
+        <nav class="nav-list">
+          <a class="nav-item active" data-view="all" id="nav-all" href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="7" width="20" height="14" rx="2"/>
+              <path d="M16 2H8a2 2 0 00-2 2v3h12V4a2 2 0 00-2-2z"/>
+            </svg>
+            <span>All Articles</span>
+          </a>
+          <a class="nav-item" data-view="starred" id="nav-starred" href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            <span>Starred</span>
+          </a>
+        </nav>
       </div>
-    </div>
-  </aside>
 
-  <!-- MAIN CONTENT -->
-  <main class="main" id="main">
-    <!-- TOP BAR -->
-    <header class="topbar">
-      <div class="topbar-left">
-        <h1 class="view-title" id="viewTitle">All Articles</h1>
-        <span class="view-subtitle" id="viewSubtitle"></span>
-      </div>
-      <div class="topbar-right">
-        <div class="search-wrapper">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-          <input type="text" id="searchInput" class="search-input" placeholder="Search articles..." />
-          <button class="search-clear" id="searchClear">×</button>
-        </div>
-        <div class="view-toggles">
-          <button class="view-btn active" id="viewGrid" title="Grid view">
-            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-          </button>
-          <button class="view-btn" id="viewList" title="List view">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      <!-- Feeds Section -->
+      <div class="sidebar-section">
+        <div class="section-header">
+          <span>Feeds</span>
+          <button class="icon-btn" id="btnAddFeedToggle" title="Add Feed">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
           </button>
         </div>
-        <button class="btn-refresh" id="btnRefreshAll" title="Refresh all feeds">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-        </button>
-      </div>
-    </header>
 
-    <!-- FILTER BAR -->
-    <div class="filter-bar" id="filterBar">
-      <div class="filter-tags" id="filterTags">
-        <button class="filter-tag active" data-filter="all">All</button>
-        <button class="filter-tag" data-filter="today">Today</button>
-        <button class="filter-tag" data-filter="week">This Week</button>
-        <button class="filter-tag" data-filter="images">Has Image</button>
-      </div>
-      <div class="sort-control">
-        <select id="sortSelect" class="sort-select">
-          <option value="date">Newest First</option>
-          <option value="date-asc">Oldest First</option>
-          <option value="feed">By Feed</option>
-        </select>
-      </div>
-    </div>
+        <!-- Inline Add Feed Form -->
+        <form class="add-feed-form" id="addFeedForm" style="display:none;">
+          <input type="url" id="feedUrlInput" placeholder="RSS, Atom, JSONFeed, or X/Twitter URL..." required />
+          <div class="form-actions">
+            <button type="submit">Add</button>
+            <button type="button" id="btnCancelAddFeed">Cancel</button>
+          </div>
+          <div class="form-error" id="addFeedError" style="display:none;"></div>
+        </form>
 
-    <!-- ARTICLES GRID -->
-    <div class="articles-container">
-      <div class="articles-grid" id="articlesGrid">
-        <div class="welcome-screen" id="welcomeScreen">
-          <div class="welcome-icon">📡</div>
-          <h2>Welcome to RSS Tool</h2>
-          <p>Your free, local-first RSS aggregator. Add your first feed to get started.</p>
-          <button class="btn-primary" id="btnWelcomeAddFeed">Add Your First Feed</button>
+        <!-- Feeds List -->
+        <div class="feed-list" id="feedsList">
+          <div class="empty-hint">No feeds yet.<br/>Click + to add one.</div>
         </div>
       </div>
-      <div class="load-more-wrapper" id="loadMoreWrapper" style="display:none">
-        <button class="btn-load-more" id="btnLoadMore">Load More</button>
-      </div>
-    </div>
-  </main>
 
-  <aside class="reading-pane" id="readingPane">
-    <div class="reading-header">
-      <div class="reading-header-left" style="display:flex; gap:8px;">
-        <button class="btn-icon close-pane" id="closePane" title="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-        <button class="btn-icon expand-pane" id="expandPane" title="Fullscreen">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-        </button>
+      <!-- Collections Section -->
+      <div class="sidebar-section">
+        <div class="section-header">
+          <span>Collections</span>
+          <button class="icon-btn" id="btnAddCollection" title="New Collection">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="collection-list" id="collectionsList">
+          <!-- Collections rendered here -->
+        </div>
       </div>
-      <div class="reading-actions">
-        <button class="btn-icon star-btn" id="starArticle" title="Star article">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        </button>
-        <a class="btn-icon open-external" id="openExternal" href="#" target="_blank" title="Open in browser">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        </a>
-      </div>
-    </div>
-    <div class="reading-content" id="readingContent">
-      <div class="reading-placeholder">Select an article to read</div>
-    </div>
-  </aside>
 
-  <!-- MODALS -->
-
-  <!-- Add Feed Modal -->
-  <div class="modal-overlay" id="modalAddFeed">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>URL → RSS</h2>
-        <button class="btn-icon modal-close" data-modal="modalAddFeed">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <!-- Sidebar Footer -->
+      <div class="sidebar-footer">
+        <button class="sidebar-action" id="btnSettings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09A1.65 1.65 0 0019.4 15z"/>
+          </svg>
+          <span>Settings</span>
         </button>
-      </div>
-      <div class="modal-tabs">
-        <button class="modal-tab active" data-tab="url2rss">Any URL → Feed</button>
-        <button class="modal-tab" data-tab="rss">RSS / Atom URL</button>
-      </div>
-      <div class="modal-body">
-
-        <!-- URL→RSS Tab (default) -->
-        <div class="tab-panel active" id="tab-url2rss">
-          <div class="url2rss-hero">
-            <p class="url2rss-desc">Paste any website URL — blog, news site, forum, social page — and we'll turn it into a subscribable RSS feed automatically.</p>
-          </div>
-          <div class="form-group">
-            <label>Any Website URL</label>
-            <div class="url-input-row">
-              <input type="url" id="url2rssInput" class="form-input" placeholder="https://anywebsite.com" />
-              <button class="btn-primary" id="btnUrl2rssGo">Generate Feed</button>
-            </div>
-          </div>
-          <!-- Result area -->
-          <div class="url2rss-result" id="url2rssResult" style="display:none">
-            <div class="url2rss-result-header">
-              <img id="url2rssResultFavicon" src="" alt="" class="feed-favicon" />
-              <div>
-                <div class="url2rss-result-title" id="url2rssResultTitle"></div>
-                <div class="url2rss-result-meta" id="url2rssResultMeta"></div>
-              </div>
-            </div>
-            <div class="scrape-preview-items" id="url2rssResultItems" style="max-height:160px;overflow-y:auto;margin-top:10px"></div>
-          </div>
-          <div class="form-group" id="url2rssNameGroup" style="display:none;margin-top:12px">
-            <label>Feed Name (optional)</label>
-            <input type="text" id="url2rssName" class="form-input" placeholder="Auto-detected" />
-            
-            <label style="margin-top:12px;display:block;">Folder (optional)</label>
-            <select id="url2rssFolder" class="form-input">
-              <option value="">-- None --</option>
-            </select>
+        <button class="sidebar-action" id="btnImportOPML">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2v10m0 0l-3-3m3 3l3-3"/>
+            <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+          </svg>
+          <span>Import OPML</span>
+        </button>
+        <div class="export-dropdown">
+          <button class="sidebar-action" id="btnExport">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22v-10m0 0l-3 3m3-3l3 3"/>
+              <path d="M4 8V6a2 2 0 012-2h12a2 2 0 012 2v2"/>
+            </svg>
+            <span>Export</span>
+          </button>
+          <div class="export-menu" id="exportMenu">
+            <a href="/api/export/opml" download>Export OPML</a>
+            <a href="/api/export/json" download>Export JSON</a>
+            <a href="/api/export/csv" download>Export CSV</a>
           </div>
         </div>
+      </div>
+    </aside>
 
-        <!-- RSS feed URL tab -->
-        <div class="tab-panel" id="tab-rss">
-          <div class="form-group">
-            <label>Feed URL</label>
-            <input type="url" id="feedUrl" class="form-input" placeholder="https://example.com/feed.xml" />
+    <!-- ─── MAIN CONTENT ───────────────────────────────────────────────────────── -->
+    <main class="main-content">
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <button class="toolbar-btn" id="btnToggleScraper">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+          <span>URL to RSS</span>
+        </button>
+        <div style="flex:1;"></div>
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="searchInput" placeholder="Search articles..." />
+          <button class="clear-search" id="searchClear" style="display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- URL Scraper (collapsible) -->
+      <div class="url-scraper" id="urlScraper" style="display:none;">
+        <h3>URL to RSS Converter</h3>
+        <p class="hint">Paste any URL - we'll find RSS/Atom/JSONFeed or extract articles automatically</p>
+        <form id="scraperForm">
+          <input type="url" id="scraperUrlInput" placeholder="https://example.com or https://x.com/username" required />
+          <button type="submit">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            Analyze URL
+          </button>
+        </form>
+        <div class="scraper-error" id="scraperError" style="display:none;"></div>
+        <div class="scraper-result" id="scraperResult" style="display:none;"></div>
+      </div>
+
+      <!-- Content Area (Article List + Reader) -->
+      <div class="content-area" id="contentArea">
+        <!-- Article List -->
+        <div class="article-list" id="articleList">
+          <div class="list-header">
+            <h3 class="view-title" id="viewTitle">All Articles</h3>
           </div>
-          <div class="form-group">
-            <label>Name (optional)</label>
-            <input type="text" id="feedName" class="form-input" placeholder="Auto-detected from feed" />
-          </div>
-          <div class="form-group">
-            <label>Folder (optional)</label>
-            <select id="feedFolder" class="form-input">
-              <option value="">-- None --</option>
-            </select>
-          </div>
-          <div class="suggested-feeds">
-            <div class="suggested-label">Popular Feeds</div>
-            <div class="suggested-list">
-              <button class="suggested-item" data-url="https://feeds.bbci.co.uk/news/rss.xml">BBC News</button>
-              <button class="suggested-item" data-url="https://hnrss.org/frontpage">Hacker News</button>
-              <button class="suggested-item" data-url="https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml">NY Times</button>
-              <button class="suggested-item" data-url="https://feeds.arstechnica.com/arstechnica/index">Ars Technica</button>
-              <button class="suggested-item" data-url="https://www.reddit.com/r/programming.rss">r/Programming</button>
-              <button class="suggested-item" data-url="https://techcrunch.com/feed/">TechCrunch</button>
+          <div class="articles" id="articlesList">
+            <div class="empty-state">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 11a9 9 0 0 1 9 9"/>
+                <path d="M4 4a16 16 0 0 1 16 16"/>
+                <circle cx="5" cy="19" r="1"/>
+              </svg>
+              <span>No articles found</span>
             </div>
           </div>
         </div>
 
+        <!-- Article View -->
+        <div class="article-view empty" id="articleView">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 11a9 9 0 0 1 9 9"/>
+            <path d="M4 4a16 16 0 0 1 16 16"/>
+            <circle cx="5" cy="19" r="1"/>
+          </svg>
+          <h2>Select an article to read</h2>
+          <p>Choose from the list on the left</p>
+        </div>
       </div>
-      <div class="modal-footer">
-        <div class="error-msg" id="addFeedError"></div>
-        <button class="btn-secondary modal-close" data-modal="modalAddFeed">Cancel</button>
-        <button class="btn-primary" id="btnSaveFeed">
-          <span class="btn-label">Add Feed</span>
-          <span class="btn-spinner" style="display:none">⟳</span>
-        </button>
-      </div>
-    </div>
+    </main>
   </div>
 
-  <!-- Add Collection Modal -->
-  <div class="modal-overlay" id="modalAddCollection">
-    <div class="modal modal-sm">
-      <div class="modal-header">
-        <h2>New Collection</h2>
-        <button class="btn-icon modal-close" data-modal="modalAddCollection">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>Collection Name</label>
-          <input type="text" id="collectionName" class="form-input" placeholder="My Tech Reads" />
-        </div>
-        <div class="form-group">
-          <label>Color</label>
-          <div class="color-picker" id="colorPicker">
-            <div class="color-swatch active" data-color="#4F8EF7" style="background:#4F8EF7"></div>
-            <div class="color-swatch" data-color="#22c55e" style="background:#22c55e"></div>
-            <div class="color-swatch" data-color="#f59e0b" style="background:#f59e0b"></div>
-            <div class="color-swatch" data-color="#ef4444" style="background:#ef4444"></div>
-            <div class="color-swatch" data-color="#a855f7" style="background:#a855f7"></div>
-            <div class="color-swatch" data-color="#06b6d4" style="background:#06b6d4"></div>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Add Feeds to Collection</label>
-          <div class="feed-checkboxes" id="feedCheckboxes"></div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-secondary modal-close" data-modal="modalAddCollection">Cancel</button>
-        <button class="btn-primary" id="btnSaveCollection">Create Collection</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Widget Modal -->
-  <div class="modal-overlay" id="modalWidget">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Embed Widget</h2>
-        <button class="btn-icon modal-close" data-modal="modalWidget">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="widget-controls">
-          <div class="form-row">
-            <div class="form-group">
-              <label>Theme</label>
-              <select id="widgetTheme" class="form-input"><option value="dark">Dark</option><option value="light">Light</option></select>
-            </div>
-            <div class="form-group">
-              <label>Layout</label>
-              <select id="widgetLayout" class="form-input"><option value="list">List</option><option value="grid">Grid</option></select>
-            </div>
-            <div class="form-group">
-              <label>Articles</label>
-              <select id="widgetLimit" class="form-input">
-                <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div class="widget-preview-wrapper">
-          <iframe id="widgetPreviewFrame" class="widget-preview-frame" src="" title="Widget Preview"></iframe>
-        </div>
-        <div class="form-group">
-          <label>Embed Code</label>
-          <div class="code-block" id="widgetCode"></div>
-          <button class="btn-copy" id="btnCopyWidget">Copy Code</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Import OPML Modal -->
-  <div class="modal-overlay" id="modalImport">
-    <div class="modal modal-sm">
-      <div class="modal-header">
-        <h2>Import OPML</h2>
-        <button class="btn-icon modal-close" data-modal="modalImport">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="drop-zone" id="opmlDropZone">
-          <div class="drop-icon">📂</div>
-          <p>Drop your .opml file here<br/>or click to browse</p>
-          <input type="file" id="opmlFile" accept=".opml,.xml" style="display:none" />
-        </div>
-        <div class="import-results" id="importResults" style="display:none">
-          <p class="import-count" id="importCount"></p>
-          <div class="import-url-list" id="importUrlList"></div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-secondary modal-close" data-modal="modalImport">Cancel</button>
-        <button class="btn-primary" id="btnImportAll" style="display:none">Import All</button>
-      </div>
-    </div>
-  </div>
+  <!-- ─── MODALS ─────────────────────────────────────────────────────────────── -->
 
   <!-- Settings Modal -->
   <div class="modal-overlay" id="modalSettings">
     <div class="modal">
       <div class="modal-header">
         <h2>Settings</h2>
-        <button class="btn-icon modal-close" data-modal="modalSettings">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <button class="icon-btn modal-close" data-modal="modalSettings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
         </button>
       </div>
       <div class="modal-tabs">
@@ -389,7 +225,6 @@
         <button class="modal-tab" data-tab="about">About</button>
       </div>
       <div class="modal-body">
-        
         <!-- General Tab -->
         <div class="tab-panel active" id="tab-general">
           <div class="form-group">
@@ -399,13 +234,13 @@
           </div>
         </div>
 
-        <!-- Style & Display Tab -->
+        <!-- Style Tab -->
         <div class="tab-panel" id="tab-style">
           <div class="form-group">
             <label>Theme</label>
             <select id="settingTheme" class="form-input">
               <option value="system">System Default</option>
-              <option value="dark">Dark Mode</option>
+              <option value="dark" selected>Dark Mode</option>
               <option value="light">Light Mode</option>
               <option value="amoled">AMOLED (Pure Black)</option>
             </select>
@@ -429,16 +264,16 @@
 
         <!-- About Tab -->
         <div class="tab-panel" id="tab-about">
-          <div class="about-info" style="text-align: center; padding: 20px 0;">
+          <div style="text-align: center; padding: 20px 0;">
             <div class="logo" style="justify-content: center; font-size: 24px; margin-bottom: 10px;">
-              <span class="logo-icon">⚡</span> RSS<span class="logo-accent">Tool</span>
+              <div class="logo-icon">📡</div>
+              <span>RSS Bridge</span>
             </div>
             <p style="color: var(--text-muted); margin-bottom: 20px;">Version 1.0.0</p>
             <p class="settings-desc">A free, local-first RSS aggregator built to turn any site into an RSS feed.</p>
             <p class="settings-desc">Proxies social media feeds seamlessly through open-source instances.</p>
           </div>
         </div>
-
       </div>
       <div class="modal-footer">
         <button class="btn-primary modal-close" data-modal="modalSettings">Done</button>
@@ -446,98 +281,93 @@
     </div>
   </div>
 
-  <!-- Toast -->
-  <div class="toast-container" id="toastContainer"></div>
+  <!-- Import OPML Modal -->
+  <div class="modal-overlay" id="modalImport">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2>Import OPML</h2>
+        <button class="icon-btn modal-close" data-modal="modalImport">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="drop-zone" id="opmlDropZone">
+          <div class="drop-icon">📂</div>
+          <p>Drop your .opml file here<br/>or click to browse</p>
+          <input type="file" id="opmlFile" accept=".opml,.xml" style="display:none" />
+        </div>
+        <div class="import-results" id="importResults" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary modal-close" data-modal="modalImport">Cancel</button>
+        <button class="btn-primary" id="btnImportAll" style="display:none;">Import All</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Collection Modal -->
+  <div class="modal-overlay" id="modalAddCollection">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2>New Collection</h2>
+        <button class="icon-btn modal-close" data-modal="modalAddCollection">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Collection Name</label>
+          <input type="text" id="collectionName" class="form-input" placeholder="My Tech Reads" />
+        </div>
+        <div class="form-group">
+          <label>Color</label>
+          <div class="color-picker" id="colorPicker">
+            <div class="color-swatch active" data-color="#22c55e" style="background:#22c55e"></div>
+            <div class="color-swatch" data-color="#3b82f6" style="background:#3b82f6"></div>
+            <div class="color-swatch" data-color="#f59e0b" style="background:#f59e0b"></div>
+            <div class="color-swatch" data-color="#ef4444" style="background:#ef4444"></div>
+            <div class="color-swatch" data-color="#a855f7" style="background:#a855f7"></div>
+            <div class="color-swatch" data-color="#06b6d4" style="background:#06b6d4"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary modal-close" data-modal="modalAddCollection">Cancel</button>
+        <button class="btn-primary" id="btnSaveCollection">Create Collection</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Delete Confirm Modal -->
   <div class="modal-overlay" id="modalConfirmDelete">
-    <div class="modal" style="max-width:350px;">
+    <div class="modal modal-sm">
       <div class="modal-header">
         <h2>Confirm Deletion</h2>
-        <button class="btn-icon modal-close" data-modal="modalConfirmDelete">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <button class="icon-btn modal-close" data-modal="modalConfirmDelete">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
         </button>
       </div>
       <div class="modal-body">
         <p id="confirmDeleteMessage" style="color:var(--text-muted); padding-bottom:10px;">Are you sure you want to delete this?</p>
       </div>
-      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px;">
+      <div class="modal-footer">
         <button class="btn-secondary modal-close" data-modal="modalConfirmDelete">Cancel</button>
         <button class="btn-primary" id="btnConfirmDelete" style="background:var(--danger); border-color:var(--danger);">Delete</button>
       </div>
     </div>
   </div>
 
-  <!-- Rename Collection Modal -->
-  <div class="modal-overlay" id="modalRenameCollection">
-    <div class="modal" style="max-width:400px;">
-      <div class="modal-header">
-        <h2>Rename Folder</h2>
-        <button class="btn-icon modal-close" data-modal="modalRenameCollection">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>New Name</label>
-          <input type="text" id="renameCollectionInput" class="form-input" placeholder="e.g. Work, Tech, Design" />
-        </div>
-      </div>
-      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px;">
-        <button class="btn-secondary modal-close" data-modal="modalRenameCollection">Cancel</button>
-        <button class="btn-primary" id="btnRenameCollectionSave">Save Name</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Move Feed Modal -->
-  <div class="modal-overlay" id="modalMoveFeed">
-    <div class="modal" style="max-width:400px;">
-      <div class="modal-header">
-        <h2>Move Feed to Folder</h2>
-        <button class="btn-icon modal-close" data-modal="modalMoveFeed">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div style="margin-bottom:16px;">
-          <div style="font-size:14px; color:var(--text-muted); margin-bottom:8px;">Feed:</div>
-          <div id="moveFeedName" style="font-weight:500;"></div>
-        </div>
-        <div>
-          <label for="moveFeedFolder" style="display:block; margin-bottom:8px; font-size:14px;">Select Folder:</label>
-          <select id="moveFeedFolder" style="width:100%; padding:8px; border:1px solid var(--border); border-radius:4px; background:var(--bg-primary); color:var(--text-primary);"></select>
-        </div>
-      </div>
-      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px;">
-        <button class="btn-secondary modal-close" data-modal="modalMoveFeed">Cancel</button>
-        <button class="btn-primary" id="btnMoveFeedSave">Move Feed</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Move Feed Confirmation Modal -->
-  <div class="modal-overlay" id="modalMoveFeedConfirm">
-    <div class="modal" style="max-width:400px;">
-      <div class="modal-header">
-        <h2>Confirm Move Feed</h2>
-        <button class="btn-icon modal-close" data-modal="modalMoveFeedConfirm">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div id="moveConfirmMessage" style="margin-bottom:16px; font-weight:500;"></div>
-        <div style="margin-bottom:16px;">
-          <div style="font-size:14px; color:var(--text-muted); margin-bottom:8px;">Move to:</div>
-          <div id="moveConfirmTarget" style="font-weight:500;"></div>
-        </div>
-      </div>
-      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px;">
-        <button class="btn-secondary modal-close" data-modal="modalMoveFeedConfirm">Cancel</button>
-        <button class="btn-primary" id="btnMoveConfirm">Move Feed</button>
-      </div>
-    </div>
-  </div>
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
 
   <script src="app-v2.js"></script>
 </body>
