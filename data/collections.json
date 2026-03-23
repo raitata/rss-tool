@@ -1,0 +1,37 @@
+{
+  "80b08c13-279d-4f82-988c-74714cb61699": {
+    "id": "80b08c13-279d-4f82-988c-74714cb61699",
+    "name": "other",
+    "feedIds": [],
+    "color": "#a855f7",
+    "createdAt": "2026-03-21T07:26:11.559Z"
+  },
+  "5c4b80d9-d8e0-49b6-a36e-bf34cd24b454": {
+    "id": "5c4b80d9-d8e0-49b6-a36e-bf34cd24b454",
+    "name": "Social Media",
+    "feedIds": [
+      "108f52fa-6d65-41fa-a647-b79b64f3af01",
+      "27a412fc-8384-47db-812a-8319d5a417e4"
+    ],
+    "color": "#4F8EF7",
+    "createdAt": "2026-03-21T07:58:12.051Z"
+  },
+  "57d2fde2-851c-428d-884c-5368c72908e3": {
+    "id": "57d2fde2-851c-428d-884c-5368c72908e3",
+    "name": "Testing Folder",
+    "feedIds": [
+      "ff371304-3dc8-4df0-9371-cbb74a793fd8"
+    ],
+    "color": "#4F8EF7",
+    "createdAt": "2026-03-21T08:27:31.539Z"
+  },
+  "62da8911-ca4b-4fd6-ad14-81c3331cea9d": {
+    "id": "62da8911-ca4b-4fd6-ad14-81c3331cea9d",
+    "name": "Social Feeds",
+    "feedIds": [
+      "835e9fcf-bc42-42e6-abdb-731b3d684245"
+    ],
+    "color": "#4F8EF7",
+    "createdAt": "2026-03-21T08:53:03.243Z"
+  }
+}

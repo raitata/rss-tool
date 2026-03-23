@@ -1,0 +1,25 @@
+{
+  "name": "rss-tool",
+  "version": "1.0.0",
+  "description": "Locally-hosted RSS aggregator — free rss.app alternative",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/server-filesystem": "^2026.1.14",
+    "@modelcontextprotocol/server-github": "^2025.4.8",
+    "@mozilla/readability": "^0.6.0",
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "github-fetcher-mcp": "^1.1.0",
+    "jsdom": "^29.0.1",
+    "rss": "^1.2.2",
+    "rss-parser": "^3.13.0",
+    "uuid": "^9.0.0"
+  }
+}
