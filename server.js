@@ -371,6 +371,11 @@ const TWITTER_PROXIES = [
   username => `https://nitter.snopyta.org/${username}/rss`
 ];
 
+// ─── Truth Social Proxies ───────────────────────────────────────────────────
+const TRUTHSOCIAL_PROXIES = [
+  username => `https://rsshub.app/truthsocial/${username}`,
+];
+
 // ─── Nitter HTML Scraping Fallback ───────────────────────────────────────────
 async function scrapeTwitterViaNitterHtml(username) {
   const nitterInstances = [
@@ -540,6 +545,78 @@ async function scrapeTwitterDirectly(username) {
   }
 }
 
+// ─── Truth Social Direct Scraping ───────────────────────────────────────────
+async function scrapeTruthSocialDirectly(username) {
+  try {
+    console.log(`[TRUTHSOCIAL] Trying direct HTML scrape for @${username}...`);
+    const url = `https://truthsocial.com/@${username}`;
+    
+    const html = await fetchHtml(url);
+    const $ = cheerio.load(html);
+    
+    const items = [];
+    
+    // Truth Social uses article elements for posts
+    const posts = $('article, .status-card, [data-testid="post"]').slice(0, 20);
+    
+    posts.each((i, el) => {
+      try {
+        const $post = $(el);
+        
+        // Get post content
+        const contentEl = $post.find('.status-card__content, .post-content, p').first();
+        const content = contentEl.text().trim();
+        
+        // Get timestamp
+        const timeEl = $post.find('time, [datetime]').first();
+        const timestamp = timeEl.attr('datetime') || new Date().toISOString();
+        
+        // Get post link
+        const linkEl = $post.find('a[href*="/posts/"]').first();
+        let link = linkEl.attr('href') || '';
+        if (link && !link.startsWith('http')) {
+          link = `https://truthsocial.com${link}`;
+        }
+        
+        // Get images
+        const imgEl = $post.find('img').first();
+        const image = imgEl.attr('src') || null;
+        
+        if (content && content.length > 5) {
+          items.push({
+            id: link || uuidv4(),
+            title: content.slice(0, 100) + (content.length > 100 ? '...' : ''),
+            link: link || `https://truthsocial.com/@${username}`,
+            content: content,
+            fullContent: content,
+            author: `@${username}`,
+            date: timestamp,
+            image: image,
+          });
+        }
+      } catch (e) {
+        // Skip problematic posts
+      }
+    });
+    
+    if (items.length > 0) {
+      console.log(`[TRUTHSOCIAL] Direct scrape success for @${username} with ${items.length} posts`);
+      return {
+        title: `@${username} on Truth Social`,
+        description: `Posts from @${username} on Truth Social`,
+        link: `https://truthsocial.com/@${username}`,
+        image: null,
+        items: items,
+      };
+    }
+    
+    return null;
+  } catch (e) {
+    console.warn(`[TRUTHSOCIAL] Direct scrape failed: ${e.message}`);
+    return null;
+  }
+}
+
 async function fetchFeed(url) {
   let parserErr;
   
@@ -569,8 +646,33 @@ async function fetchFeed(url) {
         throw new Error('All Twitter proxy instances failed. Try updating proxy list.');
       }
     }
+    
+    // ── Handle Truth Social URLs ───────────────────────────────────────────
+    if (host === 'truthsocial.com') {
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      const username = parts[0];
+      if (username) {
+        console.log(`[TRUTHSOCIAL] Fetching @${username} via proxies...`);
+        for (const proxy of TRUTHSOCIAL_PROXIES) {
+          const proxylink = proxy(username);
+          try {
+            console.log(`[TRUTHSOCIAL] Trying: ${proxylink}`);
+            const feed = await parser.parseURL(proxylink);
+            if (feed && feed.items && feed.items.length > 0) {
+              console.log(`[TRUTHSOCIAL] Success! ${proxylink} returned ${feed.items.length} items`);
+              return mapParserResult(feed, proxylink);
+            }
+            console.log(`[TRUTHSOCIAL] ${proxylink} returned empty feed, trying next...`);
+          } catch (e) {
+            parserErr = e;
+            console.log(`[TRUTHSOCIAL] Failed: ${proxylink} - ${e.message}`);
+          }
+        }
+        throw new Error('All Truth Social proxy instances failed. Try updating proxy list.');
+      }
+    }
   } catch (e) {
-    if (e.message.includes('All Twitter proxy')) throw e;
+    if (e.message.includes('All Twitter proxy') || e.message.includes('All Truth Social proxy')) throw e;
   }
 
   try {
@@ -708,6 +810,54 @@ async function smartScrape(url) {
         items: [],
         itemCount: 0,
         error: lastError?.message || 'All Twitter proxy instances failed'
+      };
+    }
+  }
+  
+  // ── 0b. Handle Truth Social URLs directly ──────────────────────────────
+  if (host === 'truthsocial.com') {
+    const parts = baseUrl.pathname.split('/').filter(Boolean);
+    const username = parts[0];
+    if (username) {
+      let lastError = null;
+      
+      // Tier 1: Try RSS proxies
+      for (const proxy of TRUTHSOCIAL_PROXIES) {
+        try {
+          const proxylink = proxy(username);
+          const feedData = await fetchFeed(proxylink);
+          return { type: 'rss', rssUrl: proxylink, feedData, allRssLinks: [{ href: proxylink, title: `@${username} on Truth Social` }] };
+        } catch (e) {
+          lastError = e;
+          console.log(`Truth Social proxy failed: ${e.message}`);
+        }
+      }
+      
+      // Tier 2: Try direct HTML scraping
+      console.log(`All Truth Social RSS proxies failed for @${username}, trying direct HTML scrape...`);
+      const directResult = await scrapeTruthSocialDirectly(username);
+      if (directResult && directResult.items && directResult.items.length > 0) {
+        console.log(`Truth Social direct scrape success for @${username} with ${directResult.items.length} posts`);
+        return { 
+          type: 'rss', 
+          rssUrl: `https://truthsocial.com/@${username}`, 
+          feedData: directResult, 
+          allRssLinks: [{ href: `https://truthsocial.com/@${username}`, title: `@${username} on Truth Social` }] 
+        };
+      }
+      
+      // All methods failed
+      return {
+        type: 'scraped',
+        siteTitle: `@${username} on Truth Social (Unable to fetch)`,
+        siteDescription: `Could not fetch @${username}. All methods failed:\n• RSS proxies: All instances blocked or down\n• Direct scrape: Site requires JavaScript or is blocking requests\n\nTruth Social actively blocks automated access. Try again later or use a different source.`,
+        siteUrl: url,
+        siteImage: null,
+        siteName: 'Truth Social',
+        favicon: 'https://truthsocial.com/favicon.ico',
+        items: [],
+        itemCount: 0,
+        error: lastError?.message || 'All Truth Social proxy instances failed'
       };
     }
   }
