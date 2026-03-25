@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  rss-tool:
+    build: .
+    container_name: rss-tool
+    ports:
+      - "55794:55794"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=55794
