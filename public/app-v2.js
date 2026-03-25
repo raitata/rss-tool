@@ -35,7 +35,8 @@ const state = {
     rssHubUrl: 'https://rsshub.app',
     theme: 'dark',
     fontSize: 'medium',
-    showImages: true
+    showImages: true,
+    refreshInterval: 0
   }
 };
 
@@ -52,7 +53,9 @@ async function init() {
   renderSidebar();
   await loadArticles();
   bindEvents();
+  initScraperAutocomplete();
   updateBadges();
+  setupAutoRefresh(); // Initialize auto-refresh on startup
 }
 
 // ── Data Loading ─────────────────────────────────────────────────────────────
@@ -60,14 +63,14 @@ async function loadFeeds() {
   try {
     const res = await fetch(`${API}/api/feeds`);
     state.feeds = await res.json();
-  } catch { state.feeds = []; }
+  } catch (err) { console.error('Failed to load feeds:', err); state.feeds = []; }
 }
 
 async function loadCollections() {
   try {
-    const res = await fetch(`${API}/api/collections`);
+    const res = await fetch(`${API}/api/collections?t=${Date.now()}`);
     state.collections = await res.json();
-  } catch { state.collections = []; }
+  } catch (err) { console.error('Failed to load collections:', err); state.collections = []; }
 }
 
 async function loadArticles() {
@@ -93,7 +96,7 @@ async function loadArticles() {
       const res = await fetch(`${API}/api/collections/${colId}/articles`);
       state.articles = await res.json();
     }
-  } catch { state.articles = []; }
+  } catch (err) { console.error('Failed to load articles:', err); state.articles = []; }
   applyFilters();
 }
 
@@ -128,6 +131,11 @@ function renderSidebar() {
   const feedsList = $('feedsList');
   const collectionsList = $('collectionsList');
   
+  console.log('[RENDER-SIDEBAR] Rendering with', state.collections.length, 'collections,', state.feeds.length, 'feeds');
+  state.collections.forEach(c => {
+    console.log(`[RENDER-SIDEBAR] Collection ${c.name}: ${(c.feedIds || []).length} feeds`);
+  });
+  
   if (!state.feeds.length && !state.collections.length) {
     if (feedsList) feedsList.innerHTML = '<div class="empty-hint">No feeds yet.<br/>Click + to add one.</div>';
     if (collectionsList) collectionsList.innerHTML = '';
@@ -135,6 +143,7 @@ function renderSidebar() {
   }
 
   const unassignedFeeds = state.feeds.filter(f => !state.collections.some(c => (c.feedIds || []).includes(f.id)));
+  console.log(`[RENDER-SIDEBAR] Unassigned feeds: ${unassignedFeeds.length}`, unassignedFeeds.map(f => f.name));
 
   // Collections with checkboxes in bulk mode
   if (collectionsList) {
@@ -292,6 +301,21 @@ function selectArticle(article) {
   const isStarred = state.starred.has(id);
   const dateStr = article.date ? new Date(article.date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '';
 
+  // Check if this is a YouTube video article
+  let embedHtml = '';
+  if (article.link) {
+    const ytMatch = article.link.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?]+)/);
+    if (ytMatch && ytMatch[1]) {
+      const videoId = ytMatch[1];
+      console.log('[VIDEO] Creating YouTube embed for videoId:', videoId, 'article:', article.title?.slice(0, 50));
+      embedHtml = `
+        <div class="video-container" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; border-radius: 8px; margin-bottom: 16px;" data-video-id="${videoId}">
+          <iframe id="yt-iframe-${videoId}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" src="https://www.youtube.com/embed/${videoId}" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+        </div>
+      `;
+    }
+  }
+
   articleView.className = 'article-view';
   articleView.innerHTML = `
     <div class="article-header">
@@ -333,7 +357,7 @@ function selectArticle(article) {
         Load Full Article (Mozilla Readability)
       </button>
       <div class="article-text" id="articleContent">
-        ${article.content || article.summary || '<p>No content available.</p>'}
+        ${embedHtml ? embedHtml : (article.content || article.summary || '<p>No content available.</p>')}
       </div>
       <a href="${esc(article.link || '#')}" target="_blank" rel="noopener" class="reading-open-full">Open in Browser →</a>
     </article>
@@ -364,12 +388,29 @@ function selectArticle(article) {
 
   $('loadFullArticle')?.addEventListener('click', () => fetchFullArticle(article));
   
-  // Process any video/audio in the initial content
-  const contentEl = $('articleContent');
-  if (contentEl) {
-    cleanArticleImages(contentEl);
-    processVideoEmbeds(contentEl);
-    processAudioPlayers(contentEl);
+  // Add logging for video iframe
+  const ytIframe = document.querySelector('.video-container iframe');
+  if (ytIframe) {
+    console.log('[VIDEO] iframe found, src:', ytIframe.src);
+    ytIframe.addEventListener('load', () => console.log('[VIDEO] iframe loaded:', ytIframe.src));
+    ytIframe.addEventListener('error', (e) => console.error('[VIDEO] iframe error:', e));
+    
+    // Monitor for visibility changes
+    const videoContainer = document.querySelector('.video-container');
+    if (videoContainer) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach(m => console.log('[VIDEO] Container mutation:', m.type, m.attributeName));
+      });
+      observer.observe(videoContainer, { attributes: true, childList: true });
+    }
+  }
+  
+  // Process any video/audio in the article body (includes content + links)
+  const articleBody = document.querySelector('.article-body');
+  if (articleBody) {
+    cleanArticleImages(articleBody);
+    processVideoEmbeds(articleBody);
+    processAudioPlayers(articleBody);
   }
 }
 
@@ -429,11 +470,12 @@ async function fetchFullArticle(article) {
     // Clean up small/tracking images
     cleanArticleImages(contentEl);
     
-    // Process video embeds (YouTube, Vimeo, etc.)
-    processVideoEmbeds(contentEl);
-    
-    // Process audio players
-    processAudioPlayers(contentEl);
+    // Process video embeds on the entire article body to catch the "Open in Browser" link
+    const articleBody = document.querySelector('.article-body');
+    if (articleBody) {
+      processVideoEmbeds(articleBody);
+      processAudioPlayers(articleBody);
+    }
 
     // Hide load button
     if (loadBtn) loadBtn.style.display = 'none';
@@ -485,9 +527,11 @@ function cleanArticleImages(container) {
 function processVideoEmbeds(container) {
   if (!container) return;
   
-  // Process existing iframes (YouTube, Vimeo, etc.)
   container.querySelectorAll('iframe').forEach(iframe => {
     const src = iframe.getAttribute('src') || '';
+    
+    // Skip if already properly embedded in video-container (from selectArticle)
+    if (iframe.closest('.video-container')) return;
     
     // Check if it's a video embed
     if (src.includes('youtube.com/embed/') || 
@@ -500,23 +544,34 @@ function processVideoEmbeds(container) {
         src.includes('odysee.com/$/embed/')) {
       
       // Wrap in video-embed container if not already wrapped
-      if (!iframe.parentElement.classList.contains('video-embed')) {
+      const parent = iframe.parentElement;
+      if (!parent?.classList.contains('video-embed')) {
         const wrapper = document.createElement('div');
         wrapper.className = 'video-embed';
-        iframe.parentNode.insertBefore(wrapper, iframe);
+        parent.insertBefore(wrapper, iframe);
         wrapper.appendChild(iframe);
       }
     }
   });
   
+  // Skip YouTube link conversion if video-container already exists (from selectArticle)
+  if (container.querySelector('.video-container')) return;
+  
   // Convert YouTube links to embeds
-  container.querySelectorAll('a[href*="youtube.com/watch"], a[href*="youtu.be/"]').forEach(link => {
+  const youtubeLinks = container.querySelectorAll('a[href*="youtube.com/watch"], a[href*="youtu.be/"], a[href*="youtube.com/shorts/"]');
+  youtubeLinks.forEach(link => {
     const videoId = extractYouTubeId(link.href);
     if (videoId && !link.classList.contains('video-converted')) {
+      // Check if there's already a video-embed wrapper for this videoId in the container
+      const existingEmbed = container.querySelector(`.video-embed iframe[src*="/embed/${videoId}"]`);
+      if (existingEmbed) {
+        link.classList.add('video-converted');
+        return;
+      }
       link.classList.add('video-converted');
       const wrapper = document.createElement('div');
       wrapper.className = 'video-embed';
-      wrapper.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+      wrapper.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>`;
       link.parentNode.insertBefore(wrapper, link.nextSibling);
     }
   });
@@ -614,9 +669,11 @@ function processAudioPlayers(container) {
 
 function extractYouTubeId(url) {
   const patterns = [
-    /youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/watch\?[^#]*v=([a-zA-Z0-9_-]{11})/,
     /youtu\.be\/([a-zA-Z0-9_-]{11})/,
-    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/live\/([a-zA-Z0-9_-]{11})/
   ];
   
   for (const pattern of patterns) {
@@ -688,29 +745,71 @@ function toggleFeedSelection(feedId) {
   renderSidebar();
 }
 
+// Bulk delete state
+let pendingBulkDelete = null;
+
 async function bulkDelete() {
   if (state.selectedFeeds.size === 0) return;
   
-  if (!confirm(`Delete ${state.selectedFeeds.size} selected feeds?`)) return;
+  // Clear any single-item confirm action to prevent conflicts
+  state.confirmAction = null;
+  
+  // Use styled modal instead of native confirm
+  pendingBulkDelete = Array.from(state.selectedFeeds);
+  $('confirmDeleteMessage').textContent = `Delete ${pendingBulkDelete.length} selected feeds?`;
+  openModal('modalConfirmDelete');
+}
+
+// Handle bulk delete confirmation
+async function executeBulkDelete() {
+  if (!pendingBulkDelete || pendingBulkDelete.length === 0) return;
+  
+  const btnConfirmDelete = $('btnConfirmDelete');
+  btnConfirmDelete.disabled = true;
   
   let deleted = 0;
-  for (const feedId of state.selectedFeeds) {
+  const failed = [];
+  for (const feedId of pendingBulkDelete) {
     try {
       await fetch(`${API}/api/feeds/${encodeURIComponent(feedId)}`, { method: 'DELETE' });
       deleted++;
-    } catch {}
+    } catch (err) {
+      console.error(`Failed to delete feed ${feedId}:`, err);
+      failed.push(feedId);
+    }
   }
   
+  pendingBulkDelete = null;
+  // Keep failed items selected so user can retry
   state.selectedFeeds.clear();
+  if (failed.length > 0) {
+    failed.forEach(id => state.selectedFeeds.add(id));
+  }
   toggleBulkMode();
   await loadFeeds();
   renderSidebar();
   await loadArticles();
-  toast(`Deleted ${deleted} feeds`, 'success');
+  
+  if (failed.length > 0) {
+    toast(`Deleted ${deleted} feeds, ${failed.length} failed`, 'warning');
+  } else {
+    toast(`Deleted ${deleted} feeds`, 'success');
+  }
+  
+  btnConfirmDelete.disabled = false;
+  closeModal('modalConfirmDelete');
 }
+
+// Bulk move state
+let pendingBulkMove = null;
 
 async function bulkMove() {
   if (state.selectedFeeds.size === 0) return;
+  
+  // Clear any pending state to prevent conflicts with previous operations
+  pendingBulkMove = null;
+  
+  pendingBulkMove = Array.from(state.selectedFeeds);
   
   // Populate move options
   const optionsEl = $('moveFeedOptions');
@@ -741,57 +840,122 @@ async function bulkMove() {
     });
   });
   
-  // Bind confirm
+  // Bind confirm - replace any previous handler
   const confirmBtn = $('btnMoveFeedConfirm');
   confirmBtn.onclick = async () => {
+    if (!pendingBulkMove || pendingBulkMove.length === 0) return;
+    
     if (selectedTarget === null) {
       toast('Please select a destination', 'error');
       return;
     }
     
+    // Capture state to prevent race conditions
+    const targetId = selectedTarget;
+    const feedsToMove = pendingBulkMove;
+    
+    confirmBtn.disabled = true;
+    pendingBulkMove = null;
+    
     let moved = 0;
-    for (const feedId of state.selectedFeeds) {
-      try {
-        // Remove from current collection if any
-        const currentCol = state.collections.find(c => (c.feedIds || []).includes(feedId));
-        if (currentCol) {
-          const updatedIds = currentCol.feedIds.filter(id => id !== feedId);
-          await fetch(`${API}/api/collections/${currentCol.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ feedIds: updatedIds })
-          });
-        }
-        
-        // Add to new collection if selected
-        if (selectedTarget) {
-          const targetCol = state.collections.find(c => c.id === selectedTarget);
-          if (targetCol) {
-            const updatedIds = [...(targetCol.feedIds || []), feedId];
-            await fetch(`${API}/api/collections/${selectedTarget}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ feedIds: updatedIds })
-            });
-          }
-        }
-        moved++;
-      } catch {}
+    const failed = [];
+    const alreadyThere = [];
+    console.log(`[BULK-MOVE] Starting move of ${feedsToMove.length} feeds to target: ${targetId || 'unassigned'}`);
+    
+    // Group feeds by their source collection to batch removals
+    const feedsBySource = new Map();
+    for (const feedId of feedsToMove) {
+      const currentCol = state.collections.find(c => (c.feedIds || []).includes(feedId));
+      const sourceId = currentCol ? currentCol.id : null;
+      if (!feedsBySource.has(sourceId)) {
+        feedsBySource.set(sourceId, []);
+      }
+      feedsBySource.get(sourceId).push(feedId);
     }
     
+    console.log(`[BULK-MOVE] Grouped by source:`, Array.from(feedsBySource.entries()).map(([k, v]) => `${k || 'unassigned'}: ${v.length}`));
+    
+    // Process each source collection in a single batch
+    for (const [sourceId, feedIds] of feedsBySource) {
+      try {
+        if (sourceId) {
+          // Batch remove all feeds from this collection at once
+          const sourceCol = state.collections.find(c => c.id === sourceId);
+          if (sourceCol) {
+            const feedsToKeep = sourceCol.feedIds.filter(id => !feedIds.includes(id));
+            console.log(`[BULK-MOVE] Batch removing ${feedIds.length} feeds from ${sourceId}, keeping ${feedsToKeep.length}`);
+            const removeRes = await fetch(`${API}/api/collections/${sourceId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ feedIds: feedsToKeep })
+            });
+            if (!removeRes.ok) throw new Error(`Failed to remove from ${sourceId}`);
+            console.log(`[BULK-MOVE] Successfully removed ${feedIds.length} feeds from ${sourceId}`);
+          }
+        }
+        
+        // Now handle adding to target (if any)
+        if (targetId) {
+          for (const feedId of feedIds) {
+            // Refresh target state each time to avoid duplicates
+            const refreshRes = await fetch(`${API}/api/collections?t=${Date.now()}`);
+            const freshCollections = await refreshRes.json();
+            const targetCol = freshCollections.find(c => c.id === targetId);
+            
+            if (targetCol) {
+              if ((targetCol.feedIds || []).includes(feedId)) {
+                alreadyThere.push(feedId);
+                moved++;
+                console.log(`[BULK-MOVE] Feed ${feedId} already in target`);
+                continue;
+              }
+              
+              const updatedIds = [...(targetCol.feedIds || []), feedId];
+              const addRes = await fetch(`${API}/api/collections/${targetId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ feedIds: updatedIds })
+              });
+              if (!addRes.ok) throw new Error(`Failed to add to ${targetId}`);
+              console.log(`[BULK-MOVE] Added feed ${feedId} to ${targetId}`);
+              moved++;
+            }
+          }
+        } else {
+          // Moving to unassigned - just count them
+          moved += feedIds.length;
+          console.log(`[BULK-MOVE] Moved ${feedIds.length} feeds to unassigned`);
+        }
+      } catch (err) {
+        console.error(`[BULK-MOVE] Failed to process batch from ${sourceId || 'unassigned'}:`, err);
+        feedIds.forEach(id => failed.push(id));
+      }
+    }
+    
+    console.log(`[BULK-MOVE] Completed: ${moved} moved, ${failed.length} failed, ${alreadyThere.length} already there`);
     closeModal('modalMoveFeed');
+    // Keep failed items selected for retry
     state.selectedFeeds.clear();
+    if (failed.length > 0) {
+      failed.forEach(id => state.selectedFeeds.add(id));
+      toast(`Moved ${moved} feeds, ${failed.length} failed`, 'warning');
+    } else {
+      toast(`Moved ${moved} feeds`, 'success');
+    }
     toggleBulkMode();
     await loadCollections();
     await loadFeeds();
     renderSidebar();
-    toast(`Moved ${moved} feeds`, 'success');
+    confirmBtn.disabled = false;
   };
   
   openModal('modalMoveFeed');
 }
 
-// ── URL Scraper ───────────────────────────────────────────────────────────────
+// ── URL Scraper with Discovery ────────────────────────────────────────────────
+let currentDiscoveryOptions = [];
+let currentScrapeUrl = '';
+
 async function handleScrape(e) {
   e.preventDefault();
   const urlInput = $('scraperUrlInput');
@@ -803,10 +967,368 @@ async function handleScrape(e) {
   const errorEl = $('scraperError');
   const resultEl = $('scraperResult');
 
-  btn.innerHTML = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Analyzing...`;
+  btn.innerHTML = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Discovering content...`;
   btn.disabled = true;
   errorEl.style.display = 'none';
   resultEl.style.display = 'none';
+
+  try {
+    // First, call the discovery API to find all content options
+    const discoverRes = await fetch(`${API}/api/discover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    const discoverData = await discoverRes.json();
+
+    if (!discoverRes.ok) throw new Error(discoverData.error || 'Failed to discover content');
+
+    currentScrapeUrl = url;
+    currentDiscoveryOptions = discoverData.options || [];
+
+    // If we found options, show the picker
+    if (currentDiscoveryOptions.length > 0) {
+      showDiscoveryPicker(discoverData.siteTitle, currentDiscoveryOptions);
+    } else {
+      // No options found, try regular scrape
+      await performScrape(url);
+    }
+
+  } catch (err) {
+    // If discovery fails, fall back to regular scrape
+    console.log('Discovery failed, trying regular scrape:', err.message);
+    await performScrape(url);
+  } finally {
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL`;
+    btn.disabled = false;
+  }
+}
+
+function showDiscoveryPicker(siteTitle, options) {
+  const resultEl = $('scraperResult');
+  const recommended = options.filter(o => o.priority >= 80);
+  const others = options.filter(o => o.priority < 80 && o.type !== 'custom');
+  const custom = options.find(o => o.type === 'custom');
+
+  let html = `
+    <div class="result-header">
+      <div>
+        <h4>${esc(siteTitle || 'Select Content Source')}</h4>
+        <span class="result-type scraped">${options.length} content sources found</span>
+      </div>
+    </div>
+    <div class="discovery-options">
+  `;
+
+  if (recommended.length > 0) {
+    html += `<div class="discovery-section"><h5>Recommended</h5>`;
+    recommended.forEach(opt => {
+      html += renderDiscoveryOption(opt);
+    });
+    html += `</div>`;
+  }
+
+  if (others.length > 0) {
+    html += `<div class="discovery-section"><h5>Other Options</h5>`;
+    others.forEach(opt => {
+      html += renderDiscoveryOption(opt);
+    });
+    html += `</div>`;
+  }
+
+  if (custom) {
+    html += `<div class="discovery-section"><h5>Custom</h5>`;
+    html += renderDiscoveryOption(custom, true);
+    html += `</div>`;
+  }
+
+  // Add Site Map option
+  html += `<div class="discovery-section"><h5>Advanced</h5>`;
+  html += `
+    <div class="discovery-option" id="discover-site-map" data-option-id="site-map">
+      <span class="option-icon">🗺️</span>
+      <div class="option-info">
+        <strong>Site Map Discovery</strong>
+        <span>Crawl sitemap.xml and robots.txt to find all available feeds</span>
+      </div>
+      <button id="discover-btn-site-map" class="btn-select">Map Site</button>
+    </div>
+  `;
+  html += `</div>`;
+
+  html += `</div>`;
+  resultEl.innerHTML = html;
+  resultEl.style.display = 'block';
+
+  // Bind click handlers - make entire row clickable
+  options.forEach(opt => {
+    const row = $(`discover-${opt.id}`);
+    const btn = $(`discover-btn-${opt.id}`);
+    if (row) {
+      row.addEventListener('click', (e) => {
+        // Don't trigger if clicking the button (button has its own handler)
+        if (e.target !== btn && !btn.contains(e.target)) {
+          selectDiscoveryOption(opt);
+        }
+      });
+    }
+    if (btn) {
+      btn.addEventListener('click', () => selectDiscoveryOption(opt));
+    }
+  });
+
+  // Bind site map row and button
+  const siteMapRow = $('discover-site-map');
+  const siteMapBtn = $('discover-btn-site-map');
+  if (siteMapRow) {
+    siteMapRow.addEventListener('click', (e) => {
+      if (e.target !== siteMapBtn && !siteMapBtn.contains(e.target)) {
+        performSiteMap(currentScrapeUrl);
+      }
+    });
+  }
+  if (siteMapBtn) {
+    siteMapBtn.addEventListener('click', () => performSiteMap(currentScrapeUrl));
+  }
+
+  // Bind custom selector form
+  const customBtn = $('btn-custom-scrape');
+  if (customBtn) {
+    customBtn.addEventListener('click', () => {
+      const selector = $('custom-selector').value.trim();
+      if (selector) {
+        performCustomScrape(currentScrapeUrl, selector);
+      }
+    });
+  }
+}
+
+function renderDiscoveryOption(opt, isCustom = false) {
+  if (isCustom) {
+    return `
+      <div class="discovery-option custom-option">
+        <div class="option-info">
+          <strong>Custom CSS Selector</strong>
+          <span>Enter your own selector to scrape specific content</span>
+        </div>
+        <div class="custom-selector-input">
+          <input type="text" id="custom-selector" placeholder="e.g., .article, .news-item, article" />
+          <button id="btn-custom-scrape" class="save-btn">Scrape</button>
+        </div>
+      </div>
+    `;
+  }
+
+  const typeIcons = {
+    'rss': '📡',
+    'section': '📄',
+    'auto-detected': '🔍',
+    'custom': '⚙️'
+  };
+
+  return `
+    <div class="discovery-option" id="discover-${opt.id}" data-option-id="${opt.id}">
+      <span class="option-icon">${typeIcons[opt.type] || '📄'}</span>
+      <div class="option-info">
+        <strong>${esc(opt.label)}</strong>
+        <span>${esc(opt.description)}</span>
+      </div>
+      ${opt.count ? `<span class="option-count">${opt.count}</span>` : ''}
+      <button id="discover-btn-${opt.id}" class="btn-select">Select</button>
+    </div>
+  `;
+}
+
+async function selectDiscoveryOption(opt) {
+  const resultEl = $('scraperResult');
+  resultEl.innerHTML = `<div class="result-preview"><div class="loading">Loading ${esc(opt.label)}...</div></div>`;
+
+  if (opt.type === 'rss') {
+    // For RSS, just add the feed directly
+    try {
+      const res = await fetch(`${API}/api/feeds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: opt.url })
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      toast('RSS feed added!', 'success');
+      $('scraperUrlInput').value = '';
+      resultEl.style.display = 'none';
+      await loadFeeds();
+      renderSidebar();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  } else {
+    // For sections, scrape with the selector
+    await performCustomScrape(currentScrapeUrl, opt.selector);
+  }
+}
+
+async function performCustomScrape(url, selector) {
+  const resultEl = $('scraperResult');
+  
+  // Validate selector
+  if (!selector || typeof selector !== 'string' || selector.trim() === '') {
+    resultEl.innerHTML = `<div class="scraper-error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div><span>No valid selector provided for this option</span></div></div>`;
+    resultEl.style.display = 'block';
+    return;
+  }
+  
+  resultEl.innerHTML = `<div class="result-preview"><div class="loading">Scraping with selector: ${esc(selector)}...</div></div>`;
+
+  try {
+    const res = await fetch(`${API}/api/scrape-custom`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, selector: selector.trim() })
+    });
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Scraping failed');
+
+    state.scraperResult = data;
+    renderScrapeResult(data);
+
+  } catch (err) {
+    let errorMsg = err.message;
+    
+    // Provide helpful messages for common errors
+    if (err.message.includes('403')) {
+      errorMsg = 'Access blocked (403). The site is preventing scraping. Try using the custom CSS selector option or a different URL.';
+    } else if (err.message.includes('401')) {
+      errorMsg = 'Authentication required (401). This site requires login.';
+    } else if (err.message.includes('timeout') || err.message.includes('ETIMEDOUT')) {
+      errorMsg = 'Request timed out. The site may be slow or blocking requests.';
+    } else if (err.message.includes('ENOTFOUND') || err.message.includes('getaddrinfo')) {
+      errorMsg = 'Could not resolve the website. Check the URL.';
+    }
+    
+    resultEl.innerHTML = `<div class="scraper-error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div><span>${esc(errorMsg)}</span></div></div>`;
+  }
+}
+
+async function performSiteMap(url) {
+  const resultEl = $('scraperResult');
+  resultEl.innerHTML = `<div class="result-preview"><div class="loading">Mapping site structure via sitemap.xml and robots.txt...</div></div>`;
+
+  try {
+    const res = await fetch(`${API}/api/site-map`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await res.text();
+      console.error('Non-JSON response:', text.slice(0, 200));
+      throw new Error('Server returned invalid response format');
+    }
+    
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Site mapping failed');
+
+    renderSiteMapResult(data);
+
+  } catch (err) {
+    let errorMsg = err.message;
+    if (err.message.includes('403')) {
+      errorMsg = 'Access blocked (403). The site is preventing access.';
+    } else if (err.message.includes('timeout')) {
+      errorMsg = 'Request timed out while mapping site.';
+    } else if (err.message.includes('JSON') || err.message.includes('invalid')) {
+      errorMsg = 'Server error: Invalid response format. Please try again.';
+    }
+    
+    resultEl.innerHTML = `<div class="scraper-error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div><span>${esc(errorMsg)}</span></div></div>`;
+  }
+}
+
+function renderSiteMapResult(data) {
+  const resultEl = $('scraperResult');
+  const feeds = data.feeds || [];
+  const pages = data.pages || [];
+  
+  let html = `
+    <div class="result-header">
+      <div>
+        <h4>${esc(data.siteName || 'Site Map')}</h4>
+        <span class="result-type scraped">${feeds.length} feeds, ${pages.length} pages discovered</span>
+      </div>
+    </div>
+  `;
+  
+  if (feeds.length > 0) {
+    html += `<div class="discovery-section"><h5>Discovered Feeds</h5><div class="discovery-options">`;
+    feeds.forEach((feed, idx) => {
+      html += `
+        <div class="discovery-option" id="sitemap-feed-${idx}">
+          <span class="option-icon">📡</span>
+          <div class="option-info">
+            <strong>${esc(feed.title)}</strong>
+            <span>${esc(feed.source)} • ${feed.url}</span>
+          </div>
+          <button class="btn-select" data-feed-idx="${idx}">Add</button>
+        </div>
+      `;
+    });
+    html += `</div></div>`;
+  }
+  
+  if (pages.length > 0) {
+    html += `<div class="discovery-section"><h5>Sample Pages</h5><div class="preview-items" style="max-height: 200px; overflow-y: auto;">`;
+    pages.slice(0, 10).forEach(page => {
+      html += `
+        <div class="preview-item" style="cursor: pointer;" onclick="window.open('${esc(page)}', '_blank')">
+          <span class="preview-title">${esc(page.replace(/^https?:\/\//, ''))}</span>
+        </div>
+      `;
+    });
+    if (pages.length > 10) {
+      html += `<div class="preview-item"><span class="preview-title">+ ${pages.length - 10} more pages...</span></div>`;
+    }
+    html += `</div></div>`;
+  }
+  
+  resultEl.innerHTML = html;
+  resultEl.style.display = 'block';
+  
+  // Bind feed add buttons
+  resultEl.querySelectorAll('[data-feed-idx]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.feedIdx);
+      const feed = feeds[idx];
+      if (feed) {
+        btn.disabled = true;
+        btn.textContent = 'Adding...';
+        try {
+          const res = await fetch(`${API}/api/feeds`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: feed.url })
+          });
+          if (!res.ok) throw new Error((await res.json()).error);
+          toast('Feed added!', 'success');
+          btn.textContent = 'Added';
+          await loadFeeds();
+          renderSidebar();
+        } catch (err) {
+          toast(err.message, 'error');
+          btn.disabled = false;
+          btn.textContent = 'Add';
+        }
+      }
+    });
+  });
+}
+
+async function performScrape(url) {
+  const resultEl = $('scraperResult');
+  resultEl.innerHTML = `<div class="result-preview"><div class="loading">Analyzing...</div></div>`;
 
   try {
     const res = await fetch(`${API}/api/scrape`, {
@@ -816,24 +1338,63 @@ async function handleScrape(e) {
     });
     const data = await res.json();
 
-    if (!res.ok) throw new Error(data.error || data.detail || 'Failed to analyze URL');
+    if (!res.ok) throw new Error(data.error || 'Failed to analyze URL');
 
     state.scraperResult = data;
+    renderScrapeResult(data);
 
-    let resultHtml = `
-      <div class="result-header">
-        <img src="${data.favicon || `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=64`}" alt="" class="result-favicon">
-        <div>
-          <h4>${esc(data.siteTitle || data.feedData?.title || 'Unknown Site')}</h4>
-          <span class="result-type ${data.type}">${data.type === 'rss' ? 'RSS/Atom Feed Found' : 'Generated Feed'}</span>
-        </div>
+  } catch (err) {
+    $('scraperError').innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div><span>${esc(err.message)}</span></div></svg>`;
+    $('scraperError').style.display = 'flex';
+  }
+}
+
+function renderScrapeResult(data) {
+  const resultEl = $('scraperResult');
+  const url = data.siteUrl || data.rssUrl || '';
+  
+  // Safely get favicon URL
+  let faviconUrl = data.favicon;
+  if (!faviconUrl && url) {
+    try {
+      const hostname = new URL(url).hostname;
+      faviconUrl = `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`;
+    } catch {
+      faviconUrl = '';
+    }
+  }
+
+  let resultHtml = `
+    <div class="result-header">
+      <img src="${faviconUrl}" alt="" class="result-favicon">
+      <div>
+        <h4>${esc(data.siteTitle || data.feedData?.title || 'Unknown Site')}</h4>
+        <span class="result-type ${data.type}">${data.type === 'rss' ? 'RSS/Atom Feed Found' : 'Generated Feed'}</span>
       </div>
-    `;
+    </div>
+  `;
 
-    if (data.error) {
-      resultHtml += `<div class="scraper-error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div><span>${esc(data.error)}</span></div></div>`;
+  if (data.error) {
+    resultHtml += `<div class="scraper-error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div><span>${esc(data.error)}</span></div></div>`;
+  } else {
+    const items = data.items || data.feedData?.items || [];
+    
+    // Show alternative option if available (e.g., FinancialJuice -> Twitter)
+    if (data.alternative && items.length === 0) {
+      resultHtml += `
+        <div class="result-preview">
+          <div class="alternative-notice" style="padding: 16px; background: var(--surface-2); border-radius: 8px; margin-bottom: 12px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <strong>Alternative Available</strong>
+            <p style="margin: 8px 0 0 0; color: var(--text-2);">${esc(data.siteDescription)}</p>
+            <button class="save-btn" id="btnUseAlternative" style="margin-top: 12px;">Use ${esc(data.alternative.type)} Feed</button>
+          </div>
+        </div>
+      `;
     } else {
-      const items = data.items || data.feedData?.items || [];
       resultHtml += `
         <div class="result-preview">
           <strong>${items.length} articles found</strong>
@@ -852,28 +1413,32 @@ async function handleScrape(e) {
         <button class="save-btn" id="btnSaveScrapedFeed">Save as Feed</button>
       `;
     }
+  }
 
-    resultEl.innerHTML = resultHtml;
-    resultEl.style.display = 'block';
+  resultEl.innerHTML = resultHtml;
+  resultEl.style.display = 'block';
 
-    const saveBtn = $('btnSaveScrapedFeed');
-    if (saveBtn) {
-      saveBtn.addEventListener('click', () => saveScrapedFeed(data));
-    }
-
-  } catch (err) {
-    errorEl.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div><span>${esc(err.message)}</span></div></svg>`;
-    errorEl.style.display = 'flex';
-  } finally {
-    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL`;
-    btn.disabled = false;
+  const saveBtn = $('btnSaveScrapedFeed');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => saveScrapedFeed(data));
+  }
+  
+  const altBtn = $('btnUseAlternative');
+  if (altBtn && data.alternative) {
+    altBtn.addEventListener('click', () => {
+      // Redirect to scrape the alternative Twitter URL
+      $('scraperUrlInput').value = data.alternative.url;
+      performScrape(data.alternative.url);
+    });
   }
 }
 
 async function saveScrapedFeed(data) {
   const btn = $('btnSaveScrapedFeed');
-  btn.innerHTML = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Saving...`;
-  btn.disabled = true;
+  if (btn) {
+    btn.innerHTML = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Saving...`;
+    btn.disabled = true;
+  }
 
   try {
     let res;
@@ -911,9 +1476,203 @@ async function saveScrapedFeed(data) {
     
   } catch (err) {
     toast(err.message, 'error');
-    btn.innerHTML = 'Save as Feed';
-    btn.disabled = false;
+    if (btn) {
+      btn.innerHTML = 'Save as Feed';
+      btn.disabled = false;
+    }
   }
+}
+
+// ── Scraper Input Autocomplete ───────────────────────────────────────────────
+const POPULAR_SITES = [
+  { title: 'BBC News', url: 'https://www.bbc.com/news', icon: '📰' },
+  { title: 'CNN', url: 'https://www.cnn.com', icon: '📰' },
+  { title: 'Reuters', url: 'https://www.reuters.com', icon: '📡' },
+  { title: 'The Guardian', url: 'https://www.theguardian.com', icon: '📰' },
+  { title: 'NY Times', url: 'https://www.nytimes.com', icon: '📰' },
+  { title: 'TechCrunch', url: 'https://techcrunch.com', icon: '💻' },
+  { title: 'The Verge', url: 'https://www.theverge.com', icon: '💻' },
+  { title: 'Wired', url: 'https://www.wired.com', icon: '💻' },
+  { title: 'Ars Technica', url: 'https://arstechnica.com', icon: '💻' },
+  { title: 'Hacker News', url: 'https://news.ycombinator.com', icon: '💻' },
+  { title: 'Reddit', url: 'https://www.reddit.com', icon: '🗣️' },
+  { title: 'YouTube', url: 'https://www.youtube.com', icon: '🎥' },
+  { title: 'FinancialJuice', url: 'https://www.financialjuice.com/home', icon: '💰' },
+  { title: 'Bloomberg', url: 'https://www.bloomberg.com', icon: '💰' },
+  { title: 'Wall Street Journal', url: 'https://www.wsj.com', icon: '💰' },
+  { title: 'Politico', url: 'https://www.politico.com', icon: '🏛️' },
+  { title: 'Vox', url: 'https://www.vox.com', icon: '📰' },
+  { title: 'Medium', url: 'https://medium.com', icon: '📝' },
+  { title: 'Substack', url: 'https://substack.com', icon: '📝' },
+  { title: 'Dev.to', url: 'https://dev.to', icon: '💻' },
+  { title: 'GitHub', url: 'https://github.com', icon: '💻' },
+  { title: 'Product Hunt', url: 'https://www.producthunt.com', icon: '🚀' },
+  { title: 'Techmeme', url: 'https://www.techmeme.com', icon: '💻' },
+  { title: 'Mashable', url: 'https://mashable.com', icon: '💻' },
+  { title: 'Gizmodo', url: 'https://gizmodo.com', icon: '💻' },
+  { title: 'Engadget', url: 'https://www.engadget.com', icon: '💻' },
+  { title: 'CNET', url: 'https://www.cnet.com', icon: '💻' },
+  { title: 'ZDNet', url: 'https://www.zdnet.com', icon: '💻' },
+  { title: 'The Atlantic', url: 'https://www.theatlantic.com', icon: '📰' },
+  { title: 'New Yorker', url: 'https://www.newyorker.com', icon: '📰' },
+  { title: 'Wired UK', url: 'https://www.wired.co.uk', icon: '💻' },
+  { title: 'Nature', url: 'https://www.nature.com', icon: '🔬' },
+  { title: 'Science', url: 'https://www.science.org', icon: '🔬' },
+];
+
+let scraperSuggestionsActive = false;
+let scraperSuggestionIndex = -1;
+let currentSuggestions = [];
+
+function initScraperAutocomplete() {
+  const input = $('scraperUrlInput');
+  const suggestionsEl = $('scraperSuggestions');
+  
+  if (!input || !suggestionsEl) return;
+
+  input.addEventListener('focus', () => {
+    if (input.value.trim().length === 0) {
+      showScraperSuggestions(POPULAR_SITES.slice(0, 8), 'Popular Sites');
+    }
+  });
+
+  input.addEventListener('input', (e) => {
+    const value = e.target.value.trim().toLowerCase();
+    
+    if (value.length === 0) {
+      showScraperSuggestions(POPULAR_SITES.slice(0, 8), 'Popular Sites');
+      return;
+    }
+
+    // Filter popular sites
+    const matching = POPULAR_SITES.filter(site => 
+      site.title.toLowerCase().includes(value) || 
+      site.url.toLowerCase().includes(value)
+    );
+
+    // Add existing feeds
+    const feedMatches = state.feeds?.filter(f => 
+      f.name?.toLowerCase().includes(value) ||
+      f.url?.toLowerCase().includes(value)
+    ).map(f => ({
+      title: f.name,
+      url: f.url,
+      icon: f.type === 'twitter' ? '🐦' : f.type === 'scraped' ? '🔍' : '📡',
+      isExistingFeed: true
+    })) || [];
+
+    const suggestions = [...matching.slice(0, 6), ...feedMatches.slice(0, 4)];
+    
+    if (suggestions.length > 0) {
+      const category = feedMatches.length > 0 ? 'Suggestions & Your Feeds' : 'Suggestions';
+      showScraperSuggestions(suggestions, category);
+    } else {
+      hideScraperSuggestions();
+    }
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (!scraperSuggestionsActive) return;
+
+    switch(e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        scraperSuggestionIndex = Math.min(scraperSuggestionIndex + 1, currentSuggestions.length - 1);
+        updateSuggestionHighlight();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        scraperSuggestionIndex = Math.max(scraperSuggestionIndex - 1, -1);
+        updateSuggestionHighlight();
+        break;
+      case 'Enter':
+        if (scraperSuggestionIndex >= 0) {
+          e.preventDefault();
+          selectScraperSuggestion(currentSuggestions[scraperSuggestionIndex]);
+        }
+        break;
+      case 'Escape':
+        hideScraperSuggestions();
+        break;
+    }
+  });
+
+  // Hide suggestions when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!input.contains(e.target) && !suggestionsEl.contains(e.target)) {
+      hideScraperSuggestions();
+    }
+  });
+}
+
+function showScraperSuggestions(suggestions, category) {
+  const suggestionsEl = $('scraperSuggestions');
+  if (!suggestionsEl) return;
+
+  currentSuggestions = suggestions;
+  scraperSuggestionIndex = -1;
+  scraperSuggestionsActive = true;
+
+  let html = `<div class="suggestion-category">${esc(category)}</div>`;
+  
+  suggestions.forEach((item, index) => {
+    html += `
+      <div class="suggestion-item" data-index="${index}" data-url="${esc(item.url)}">
+        <span class="suggestion-icon">${item.icon}</span>
+        <div class="suggestion-content">
+          <span class="suggestion-title">${esc(item.title)}</span>
+          <span class="suggestion-url">${esc(item.url)}</span>
+        </div>
+      </div>
+    `;
+  });
+
+  suggestionsEl.innerHTML = html;
+  suggestionsEl.style.display = 'block';
+
+  // Add click handlers
+  suggestionsEl.querySelectorAll('.suggestion-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const index = parseInt(item.dataset.index);
+      selectScraperSuggestion(currentSuggestions[index]);
+    });
+  });
+}
+
+function updateSuggestionHighlight() {
+  const suggestionsEl = $('scraperSuggestions');
+  if (!suggestionsEl) return;
+
+  suggestionsEl.querySelectorAll('.suggestion-item').forEach((item, index) => {
+    item.classList.toggle('active', index === scraperSuggestionIndex);
+  });
+
+  // Scroll active item into view
+  if (scraperSuggestionIndex >= 0) {
+    const activeItem = suggestionsEl.querySelector('.suggestion-item.active');
+    if (activeItem) {
+      activeItem.scrollIntoView({ block: 'nearest' });
+    }
+  }
+}
+
+function selectScraperSuggestion(item) {
+  const input = $('scraperUrlInput');
+  if (input) {
+    input.value = item.url;
+    input.focus();
+  }
+  hideScraperSuggestions();
+}
+
+function hideScraperSuggestions() {
+  const suggestionsEl = $('scraperSuggestions');
+  if (suggestionsEl) {
+    suggestionsEl.style.display = 'none';
+  }
+  scraperSuggestionsActive = false;
+  scraperSuggestionIndex = -1;
+  currentSuggestions = [];
 }
 
 // ── Event Binding ────────────────────────────────────────────────────────────
@@ -1046,6 +1805,17 @@ function bindEvents() {
     });
   }
 
+  const settingRefreshInterval = $('settingRefreshInterval');
+  if (settingRefreshInterval) {
+    settingRefreshInterval.value = state.settings.refreshInterval || 0;
+    settingRefreshInterval.addEventListener('change', () => {
+      const minutes = parseInt(settingRefreshInterval.value, 10);
+      state.settings.refreshInterval = minutes;
+      localStorage.setItem('rssToolSettings', JSON.stringify(state.settings));
+      setupAutoRefresh();
+      toast(minutes > 0 ? `Auto-refresh set to ${minutes} minutes` : 'Auto-refresh disabled', 'success');
+    });
+  }
   $$('.modal-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       const modal = tab.closest('.modal');
@@ -1090,7 +1860,7 @@ function bindEvents() {
         await loadCollections();
         renderSidebar();
         toast('Collection created!', 'success');
-      } catch { toast('Failed to create collection', 'error'); }
+      } catch (err) { console.error('Failed to create collection:', err); toast('Failed to create collection', 'error'); }
     });
   }
 
@@ -1140,6 +1910,12 @@ function bindEvents() {
   const btnConfirmDelete = $('btnConfirmDelete');
   if (btnConfirmDelete) {
     btnConfirmDelete.addEventListener('click', async () => {
+      // Handle bulk delete if pending
+      if (pendingBulkDelete) {
+        await executeBulkDelete();
+        return;
+      }
+      
       if (!state.confirmAction) return;
       const { type, id } = state.confirmAction;
       btnConfirmDelete.disabled = true;
@@ -1158,7 +1934,8 @@ function bindEvents() {
         renderSidebar();
         await loadArticles();
         toast('Deleted successfully', 'success');
-      } catch {
+      } catch (err) {
+        console.error('Delete failed:', err);
         toast('Delete failed', 'error');
       } finally {
         btnConfirmDelete.disabled = false;
@@ -1183,19 +1960,31 @@ function bindEvents() {
     btnRefreshAll.addEventListener('click', async () => {
       btnRefreshAll.classList.add('spinning');
       toast('Refreshing all feeds...', 'info');
+      console.log(`[REFRESH-ALL] Starting refresh of ${state.feeds.length} feeds`);
       
       let success = 0, failed = 0;
-      const promises = state.feeds.map(async (f) => {
+      
+      // Process sequentially with delay to avoid overwhelming the server
+      for (const f of state.feeds) {
         try {
+          console.log(`[REFRESH-ALL] Refreshing feed: ${f.name || f.id}`);
           const res = await fetch(`${API}/api/feeds/${encodeURIComponent(f.id)}/refresh`, { method: 'POST' });
-          if (res.ok) success++;
-          else failed++;
-        } catch {
+          if (res.ok) {
+            success++;
+            console.log(`[REFRESH-ALL] Success: ${f.name || f.id}`);
+          } else {
+            failed++;
+            console.error(`[REFRESH-ALL] Failed: ${f.name || f.id} - ${res.status}`);
+          }
+          // Small delay between requests to prevent server overload
+          await new Promise(r => setTimeout(r, 200));
+        } catch (err) {
+          console.error(`[REFRESH-ALL] Error refreshing ${f.id}:`, err);
           failed++;
         }
-      });
+      }
       
-      await Promise.allSettled(promises);
+      console.log(`[REFRESH-ALL] Completed: ${success} success, ${failed} failed`);
       
       await loadFeeds();
       renderSidebar();
@@ -1260,7 +2049,8 @@ function bindSidebarEvents() {
             await loadArticles();
           }
           toast('Feed refreshed!', 'success');
-        } catch {
+        } catch (err) {
+          console.error(`Failed to refresh feed ${feedId}:`, err);
           toast('Refresh failed', 'error');
         }
       });
@@ -1391,7 +2181,8 @@ function bindSidebarEvents() {
         await loadCollections();
         renderSidebar();
         toast('Feed moved', 'success');
-      } catch {
+      } catch (err) {
+        console.error('Failed to move feed to collection:', err);
         toast('Move failed', 'error');
       }
     });
@@ -1399,10 +2190,20 @@ function bindSidebarEvents() {
 
   // Drop target for feeds list (move back to unassigned)
   const feedsList = $('feedsList');
-  const feedsSection = $('feedsSection');
+  const feedsSection = feedsList?.closest('.sidebar-section');
   const dropTarget = feedsSection || feedsList;
   
   if (dropTarget) {
+    // Track drag counter to handle child element events
+    let dragCounter = 0;
+    
+    dropTarget.addEventListener('dragenter', e => {
+      if (!state.draggedFeedId) return;
+      dragCounter++;
+      e.preventDefault();
+      dropTarget.classList.add('drag-over');
+    });
+    
     dropTarget.addEventListener('dragover', e => {
       if (!state.draggedFeedId) return;
       e.preventDefault();
@@ -1411,16 +2212,22 @@ function bindSidebarEvents() {
     });
     
     dropTarget.addEventListener('dragleave', () => {
-      dropTarget.classList.remove('drag-over');
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        dropTarget.classList.remove('drag-over');
+      }
     });
     
     dropTarget.addEventListener('drop', async e => {
       if (!state.draggedFeedId) return;
       e.preventDefault();
       e.stopPropagation();
+      dragCounter = 0;
       dropTarget.classList.remove('drag-over');
       
       const feedId = state.draggedFeedId;
+      state.draggedFeedId = null; // Prevent duplicate drops
       
       // Check if feed is currently in any collection
       const currentCol = state.collections.find(c => (c.feedIds || []).includes(feedId));
@@ -1441,7 +2248,8 @@ function bindSidebarEvents() {
         await loadCollections();
         renderSidebar();
         toast('Feed moved to unassigned', 'success');
-      } catch {
+      } catch (err) {
+        console.error('Failed to move feed to unassigned:', err);
         toast('Move failed', 'error');
       }
     });
@@ -1459,7 +2267,37 @@ function bindSidebarEvents() {
   });
 }
 
-// ── OPML Import ──────────────────────────────────────────────────────────────
+// Track auto-refresh timer
+let autoRefreshTimer = null;
+
+// ── Auto Refresh ────────────────────────────────────────────────────────────
+function setupAutoRefresh() {
+  // Clear existing timer
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+  
+  const minutes = state.settings.refreshInterval;
+  if (minutes > 0) {
+    console.log(`[AUTO-REFRESH] Setting up auto-refresh every ${minutes} minutes`);
+    autoRefreshTimer = setInterval(async () => {
+      console.log('[AUTO-REFRESH] Running scheduled refresh');
+      // Trigger refresh all silently (without UI feedback)
+      for (const f of state.feeds) {
+        try {
+          await fetch(`${API}/api/feeds/${encodeURIComponent(f.id)}/refresh`, { method: 'POST' });
+          await new Promise(r => setTimeout(r, 200));
+        } catch (err) {
+          console.error(`[AUTO-REFRESH] Failed to refresh ${f.id}:`, err);
+        }
+      }
+      await loadFeeds();
+      await loadArticles();
+      console.log('[AUTO-REFRESH] Completed scheduled refresh');
+    }, minutes * 60 * 1000);
+  }
+}
 async function handleOPMLFile(file) {
   if (!file) return;
   const text = await file.text();
@@ -1482,7 +2320,9 @@ async function handleOPMLFile(file) {
             body: JSON.stringify({ url })
           });
           imported++;
-        } catch {}
+        } catch (err) {
+          console.error(`Failed to import feed ${url}:`, err);
+        }
       }
       
       closeModal('modalImport');
@@ -1491,7 +2331,8 @@ async function handleOPMLFile(file) {
       await loadArticles();
       toast(`Imported ${imported} feeds`, 'success');
     }
-  } catch {
+  } catch (err) {
+    console.error('Failed to import OPML:', err);
     toast('Failed to import OPML', 'error');
   }
 }
