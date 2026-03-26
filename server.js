@@ -356,25 +356,70 @@ async function fetchHtml(url, options = {}) {
   return html;
 }
 
-// ─── RSS/JSON Fetch Helper ──────────────────────────────────────────────────────────
+// ─── RSSHub Social Media Configuration ──────────────────────────────────────
+// Centralized RSSHub endpoints for various social media platforms
+const RSSHUB_SOCIAL_ENDPOINTS = {
+  // Twitter/X - using rsshub.app as primary
+  'twitter.com': (username) => `https://rsshub.app/twitter/user/${username}`,
+  'x.com': (username) => `https://rsshub.app/twitter/user/${username}`,
+  
+  // Truth Social
+  'truthsocial.com': (username) => `https://rsshub.app/truthsocial/${username}`,
+  
+  // Instagram
+  'instagram.com': (username) => `https://rsshub.app/instagram/${username}`,
+  
+  // YouTube
+  'youtube.com': (channelId) => `https://rsshub.app/youtube/channel/${channelId}`,
+  'youtu.be': (channelId) => `https://rsshub.app/youtube/channel/${channelId}`,
+  
+  // Reddit
+  'reddit.com': (subreddit) => `https://rsshub.app/reddit/${subreddit}`,
+  
+  // TikTok
+  'tiktok.com': (username) => `https://rsshub.app/tiktok/user/${username}`,
+  
+  // Facebook
+  'facebook.com': (pageId) => `https://rsshub.app/facebook/page/${pageId}`,
+  
+  // Telegram
+  't.me': (channel) => `https://rsshub.app/telegram/channel/${channel}`,
+  
+  // LinkedIn (limited support)
+  'linkedin.com': (profile) => `https://rsshub.app/linkedin/in/${profile}`,
+  
+  // Mastodon
+  'mastodon.social': (username) => `https://rsshub.app/mastodon/account/${username}`,
+};
+
+// Fallback Nitter instances for Twitter when RSSHub fails
 const TWITTER_PROXIES = [
   username => `https://bird.makeup/users/${username}/rss`,
   username => `https://twiiit.com/${username}/rss`,
-  username => `https://rsshub.app/twitter/user/${username}`,
   username => `https://nitter.privacydev.net/${username}/rss`,
   username => `https://nitter.net/${username}/rss`,
-  username => `https://nitter.poast.org/${username}/rss`,
-  username => `https://nitter.cz/${username}/rss`,
-  username => `https://t.comf.st/${username}/rss`,
-  username => `https://nitter.lucabased.xyz/${username}/rss`,
-  username => `https://nitter.42l.fr/${username}/rss`,
-  username => `https://nitter.snopyta.org/${username}/rss`
 ];
 
-// ─── Truth Social Proxies ───────────────────────────────────────────────────
-const TRUTHSOCIAL_PROXIES = [
-  username => `https://rsshub.app/truthsocial/${username}`,
-];
+// Generic function to scrape social media via RSSHub
+async function scrapeSocialMediaRssHub(hostname, identifier) {
+  const endpointBuilder = RSSHUB_SOCIAL_ENDPOINTS[hostname];
+  if (!endpointBuilder) return null;
+  
+  const rssUrl = endpointBuilder(identifier);
+  console.log(`[RSSHUB] Trying ${rssUrl}`);
+  
+  try {
+    const feed = await parser.parseURL(rssUrl);
+    if (feed && feed.items && feed.items.length > 0) {
+      console.log(`[RSSHUB] Success! ${rssUrl} returned ${feed.items.length} items`);
+      return mapParserResult(feed, rssUrl);
+    }
+    return null;
+  } catch (e) {
+    console.log(`[RSSHUB] Failed: ${rssUrl} - ${e.message}`);
+    return null;
+  }
+}
 
 // ─── Nitter HTML Scraping Fallback ───────────────────────────────────────────
 async function scrapeTwitterViaNitterHtml(username) {
@@ -623,13 +668,26 @@ async function fetchFeed(url) {
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.replace('www.', '');
-    if (host === 'twitter.com' || host === 'x.com') {
-      const parts = parsed.pathname.split('/').filter(Boolean);
-      const username = parts[0];
-      if (username) {
-        console.log(`[TWITTER] Fetching @${username} via proxies...`);
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    const identifier = parts[0];
+    
+    if (!identifier) {
+      throw new Error('Invalid URL format');
+    }
+    
+    // ── Check if this is a supported social media platform ───────────────────
+    if (RSSHUB_SOCIAL_ENDPOINTS[host]) {
+      console.log(`[SOCIAL] Detected ${host}, trying RSSHub...`);
+      const result = await scrapeSocialMediaRssHub(host, identifier);
+      if (result) {
+        return result;
+      }
+      
+      // For Twitter/X, fallback to Nitter proxies if RSSHub fails
+      if ((host === 'twitter.com' || host === 'x.com') && identifier) {
+        console.log(`[TWITTER] RSSHub failed, trying Nitter proxies...`);
         for (const proxy of TWITTER_PROXIES) {
-          const proxylink = proxy(username);
+          const proxylink = proxy(identifier);
           try {
             console.log(`[TWITTER] Trying: ${proxylink}`);
             const feed = await parser.parseURL(proxylink);
@@ -637,42 +695,17 @@ async function fetchFeed(url) {
               console.log(`[TWITTER] Success! ${proxylink} returned ${feed.items.length} items`);
               return mapParserResult(feed, proxylink);
             }
-            console.log(`[TWITTER] ${proxylink} returned empty feed, trying next...`);
           } catch (e) {
             parserErr = e;
             console.log(`[TWITTER] Failed: ${proxylink} - ${e.message}`);
           }
         }
-        throw new Error('All Twitter proxy instances failed. Try updating proxy list.');
       }
-    }
-    
-    // ── Handle Truth Social URLs ───────────────────────────────────────────
-    if (host === 'truthsocial.com') {
-      const parts = parsed.pathname.split('/').filter(Boolean);
-      const username = parts[0];
-      if (username) {
-        console.log(`[TRUTHSOCIAL] Fetching @${username} via proxies...`);
-        for (const proxy of TRUTHSOCIAL_PROXIES) {
-          const proxylink = proxy(username);
-          try {
-            console.log(`[TRUTHSOCIAL] Trying: ${proxylink}`);
-            const feed = await parser.parseURL(proxylink);
-            if (feed && feed.items && feed.items.length > 0) {
-              console.log(`[TRUTHSOCIAL] Success! ${proxylink} returned ${feed.items.length} items`);
-              return mapParserResult(feed, proxylink);
-            }
-            console.log(`[TRUTHSOCIAL] ${proxylink} returned empty feed, trying next...`);
-          } catch (e) {
-            parserErr = e;
-            console.log(`[TRUTHSOCIAL] Failed: ${proxylink} - ${e.message}`);
-          }
-        }
-        throw new Error('All Truth Social proxy instances failed. Try updating proxy list.');
-      }
+      
+      throw new Error(`All ${host} RSS proxy instances failed. Try updating proxy list.`);
     }
   } catch (e) {
-    if (e.message.includes('All Twitter proxy') || e.message.includes('All Truth Social proxy')) throw e;
+    if (e.message.includes('All') && e.message.includes('failed')) throw e;
   }
 
   try {
@@ -759,7 +792,15 @@ async function smartScrape(url) {
     if (username && !['i', 'search', 'explore', 'home', 'notifications', 'messages', 'settings'].includes(username.toLowerCase())) {
       let lastError = null;
       
-      // Tier 1: Try RSS proxies
+      // Tier 1: Try RSSHub first
+      console.log(`[TWITTER] Trying RSSHub for @${username}...`);
+      const rssHubResult = await scrapeSocialMediaRssHub(host, username);
+      if (rssHubResult) {
+        return { type: 'rss', rssUrl: `https://rsshub.app/twitter/user/${username}`, feedData: rssHubResult, allRssLinks: [{ href: `https://rsshub.app/twitter/user/${username}`, title: `@${username} on X via RSSHub` }] };
+      }
+      
+      // Tier 2: Try Nitter RSS proxies
+      console.log(`[TWITTER] RSSHub failed for @${username}, trying Nitter proxies...`);
       for (const proxy of TWITTER_PROXIES) {
         try {
           const proxylink = proxy(username);
@@ -768,11 +809,10 @@ async function smartScrape(url) {
         } catch (e) {
           lastError = e;
           console.log(`Twitter proxy failed: ${e.message}`);
-          // Try next proxy
         }
       }
       
-      // Tier 2: Try Nitter HTML scraping
+      // Tier 3: Try Nitter HTML scraping
       console.log(`All RSS proxies failed for @${username}, trying Nitter HTML scraping...`);
       const nitterResult = await scrapeTwitterViaNitterHtml(username);
       if (nitterResult && nitterResult.items && nitterResult.items.length > 0) {
@@ -785,7 +825,7 @@ async function smartScrape(url) {
         };
       }
       
-      // Tier 3: Try direct Twitter syndication API
+      // Tier 4: Try direct Twitter syndication API
       console.log(`Nitter HTML scraping failed for @${username}, trying direct Twitter scrape...`);
       const directResult = await scrapeTwitterDirectly(username);
       if (directResult && directResult.items && directResult.items.length > 0) {
@@ -802,7 +842,7 @@ async function smartScrape(url) {
       return {
         type: 'scraped',
         siteTitle: `@${username} on X (Unable to fetch)`,
-        siteDescription: `Could not fetch @${username}. All methods failed:\n• RSS proxies: Most Nitter instances are down or blocked\n• HTML scraping: Site requires JavaScript or account is private\n• Direct scrape: Twitter syndication API blocked\n\nTry using a direct Nitter URL like https://nitter.net/${username}/rss`,
+        siteDescription: `Could not fetch @${username}. All methods failed:\n• RSSHub: Primary source unavailable\n• RSS proxies: Most Nitter instances are down or blocked\n• HTML scraping: Site requires JavaScript or account is private\n• Direct scrape: Twitter syndication API blocked\n\nTry using a direct Nitter URL like https://nitter.net/${username}/rss`,
         siteUrl: url,
         siteImage: `https://unavatar.io/twitter/${username}`,
         siteName: 'X (Twitter)',
@@ -814,50 +854,41 @@ async function smartScrape(url) {
     }
   }
   
-  // ── 0b. Handle Truth Social URLs directly ──────────────────────────────
-  if (host === 'truthsocial.com') {
+  // ── 0b. Handle other social media platforms via RSSHub ─────────────────
+  if (RSSHUB_SOCIAL_ENDPOINTS[host] && host !== 'twitter.com' && host !== 'x.com') {
     const parts = baseUrl.pathname.split('/').filter(Boolean);
-    const username = parts[0];
-    if (username) {
-      let lastError = null;
-      
-      // Tier 1: Try RSS proxies
-      for (const proxy of TRUTHSOCIAL_PROXIES) {
-        try {
-          const proxylink = proxy(username);
-          const feedData = await fetchFeed(proxylink);
-          return { type: 'rss', rssUrl: proxylink, feedData, allRssLinks: [{ href: proxylink, title: `@${username} on Truth Social` }] };
-        } catch (e) {
-          lastError = e;
-          console.log(`Truth Social proxy failed: ${e.message}`);
-        }
-      }
-      
-      // Tier 2: Try direct HTML scraping
-      console.log(`All Truth Social RSS proxies failed for @${username}, trying direct HTML scrape...`);
-      const directResult = await scrapeTruthSocialDirectly(username);
-      if (directResult && directResult.items && directResult.items.length > 0) {
-        console.log(`Truth Social direct scrape success for @${username} with ${directResult.items.length} posts`);
+    const identifier = parts[0];
+    if (identifier) {
+      console.log(`[SOCIAL] Trying RSSHub for ${host} @${identifier}...`);
+      const rssHubResult = await scrapeSocialMediaRssHub(host, identifier);
+      if (rssHubResult) {
+        const platformName = host === 'truthsocial.com' ? 'Truth Social' : 
+                            host === 'instagram.com' ? 'Instagram' :
+                            host === 'youtube.com' || host === 'youtu.be' ? 'YouTube' :
+                            host === 'reddit.com' ? 'Reddit' :
+                            host === 'tiktok.com' ? 'TikTok' :
+                            host === 'facebook.com' ? 'Facebook' :
+                            host === 't.me' ? 'Telegram' : host;
         return { 
           type: 'rss', 
-          rssUrl: `https://truthsocial.com/@${username}`, 
-          feedData: directResult, 
-          allRssLinks: [{ href: `https://truthsocial.com/@${username}`, title: `@${username} on Truth Social` }] 
+          rssUrl: RSSHUB_SOCIAL_ENDPOINTS[host](identifier), 
+          feedData: rssHubResult, 
+          allRssLinks: [{ href: RSSHUB_SOCIAL_ENDPOINTS[host](identifier), title: `@${identifier} on ${platformName}` }] 
         };
       }
       
-      // All methods failed
+      // RSSHub failed for this platform
       return {
         type: 'scraped',
-        siteTitle: `@${username} on Truth Social (Unable to fetch)`,
-        siteDescription: `Could not fetch @${username}. All methods failed:\n• RSS proxies: All instances blocked or down\n• Direct scrape: Site requires JavaScript or is blocking requests\n\nTruth Social actively blocks automated access. Try again later or use a different source.`,
+        siteTitle: `@${identifier} on ${host} (Unable to fetch)`,
+        siteDescription: `Could not fetch @${identifier}. RSSHub returned no items or is unavailable.\n\nTry again later or check if the username/handle is correct.`,
         siteUrl: url,
         siteImage: null,
-        siteName: 'Truth Social',
-        favicon: 'https://truthsocial.com/favicon.ico',
+        siteName: host,
+        favicon: `https://www.google.com/s2/favicons?domain=${host}&sz=64`,
         items: [],
         itemCount: 0,
-        error: lastError?.message || 'All Truth Social proxy instances failed'
+        error: 'RSSHub fetch failed'
       };
     }
   }
