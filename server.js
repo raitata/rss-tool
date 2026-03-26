@@ -362,34 +362,6 @@ const RSSHUB_SOCIAL_ENDPOINTS = {
   // Twitter/X - using rsshub.app as primary
   'twitter.com': (username) => `https://rsshub.app/twitter/user/${username}`,
   'x.com': (username) => `https://rsshub.app/twitter/user/${username}`,
-  
-  // Truth Social
-  'truthsocial.com': (username) => `https://rsshub.app/truthsocial/${username}`,
-  
-  // Instagram
-  'instagram.com': (username) => `https://rsshub.app/instagram/${username}`,
-  
-  // YouTube
-  'youtube.com': (channelId) => `https://rsshub.app/youtube/channel/${channelId}`,
-  'youtu.be': (channelId) => `https://rsshub.app/youtube/channel/${channelId}`,
-  
-  // Reddit
-  'reddit.com': (subreddit) => `https://rsshub.app/reddit/${subreddit}`,
-  
-  // TikTok
-  'tiktok.com': (username) => `https://rsshub.app/tiktok/user/${username}`,
-  
-  // Facebook
-  'facebook.com': (pageId) => `https://rsshub.app/facebook/page/${pageId}`,
-  
-  // Telegram
-  't.me': (channel) => `https://rsshub.app/telegram/channel/${channel}`,
-  
-  // LinkedIn (limited support)
-  'linkedin.com': (profile) => `https://rsshub.app/linkedin/in/${profile}`,
-  
-  // Mastodon
-  'mastodon.social': (username) => `https://rsshub.app/mastodon/account/${username}`,
 };
 
 // Fallback Nitter instances for Twitter when RSSHub fails
@@ -855,43 +827,9 @@ async function smartScrape(url) {
   }
   
   // ── 0b. Handle other social media platforms via RSSHub ─────────────────
-  if (RSSHUB_SOCIAL_ENDPOINTS[host] && host !== 'twitter.com' && host !== 'x.com') {
-    const parts = baseUrl.pathname.split('/').filter(Boolean);
-    const identifier = parts[0];
-    if (identifier) {
-      console.log(`[SOCIAL] Trying RSSHub for ${host} @${identifier}...`);
-      const rssHubResult = await scrapeSocialMediaRssHub(host, identifier);
-      if (rssHubResult) {
-        const platformName = host === 'truthsocial.com' ? 'Truth Social' : 
-                            host === 'instagram.com' ? 'Instagram' :
-                            host === 'youtube.com' || host === 'youtu.be' ? 'YouTube' :
-                            host === 'reddit.com' ? 'Reddit' :
-                            host === 'tiktok.com' ? 'TikTok' :
-                            host === 'facebook.com' ? 'Facebook' :
-                            host === 't.me' ? 'Telegram' : host;
-        return { 
-          type: 'rss', 
-          rssUrl: RSSHUB_SOCIAL_ENDPOINTS[host](identifier), 
-          feedData: rssHubResult, 
-          allRssLinks: [{ href: RSSHUB_SOCIAL_ENDPOINTS[host](identifier), title: `@${identifier} on ${platformName}` }] 
-        };
-      }
-      
-      // RSSHub failed for this platform
-      return {
-        type: 'scraped',
-        siteTitle: `@${identifier} on ${host} (Unable to fetch)`,
-        siteDescription: `Could not fetch @${identifier}. RSSHub returned no items or is unavailable.\n\nTry again later or check if the username/handle is correct.`,
-        siteUrl: url,
-        siteImage: null,
-        siteName: host,
-        favicon: `https://www.google.com/s2/favicons?domain=${host}&sz=64`,
-        items: [],
-        itemCount: 0,
-        error: 'RSSHub fetch failed'
-      };
-    }
-  }
+  // NOTE: Only Twitter/X uses RSSHub. Other platforms (YouTube, Instagram, etc.)
+  // are handled via their native RSS feeds or HTML scraping to avoid breaking.
+  // DO NOT add other platforms to RSSHUB_SOCIAL_ENDPOINTS without testing.
   
   const html = await fetchHtml(url);
   const $ = cheerio.load(html);
