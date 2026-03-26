@@ -73,7 +73,7 @@ async function loadCollections() {
   } catch (err) { console.error('Failed to load collections:', err); state.collections = []; }
 }
 
-async function loadArticles(skipLoadingSpinner = false) {
+async function loadArticles(skipLoadingSpinner = false, silent = false) {
   const articlesList = $('articlesList');
   if (articlesList && !skipLoadingSpinner) {
     articlesList.innerHTML = `<div class="loading-state"><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg><span>Loading articles...</span></div>`;
@@ -97,11 +97,11 @@ async function loadArticles(skipLoadingSpinner = false) {
       state.articles = await res.json();
     }
   } catch (err) { console.error('Failed to load articles:', err); state.articles = []; }
-  applyFilters();
+  applyFilters(silent);
 }
 
 // ── Filtering & Sorting ───────────────────────────────────────────────────────
-function applyFilters() {
+function applyFilters(silent = false) {
   let articles = [...state.articles];
 
   if (state.currentView === 'starred') {
@@ -122,7 +122,9 @@ function applyFilters() {
   else if (state.sort === 'feed') articles.sort((a, b) => (a.feedName || '').localeCompare(b.feedName || ''));
 
   state.filteredArticles = articles;
-  renderArticleList(true);
+  if (!silent) {
+    renderArticleList(true);
+  }
   updateBadges();
 }
 
@@ -2293,7 +2295,7 @@ function setupAutoRefresh() {
         }
       }
       await loadFeeds();
-      await loadArticles(true); // Skip loading spinner during auto-refresh
+      await loadArticles(true, true); // Skip loading spinner and silent (no re-render) during auto-refresh
       console.log('[AUTO-REFRESH] Completed scheduled refresh');
     }, minutes * 60 * 1000);
   }
